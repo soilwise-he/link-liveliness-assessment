@@ -9,6 +9,8 @@ A component which evaluates for a set of metadata records (describing either dat
 The component either returns a http status: 200 (ok), 403 (non autorized), 404 (not found), 500 (error), ...
 Status 302 is forwarded to new location and the test is repeated.
 
+The component runs an evaluation for a single resource at request, or runs tests at intervals providing a history of availability 
+
 A link either points to:
 
 - another metadata record
