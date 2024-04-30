@@ -30,20 +30,25 @@ The benefit of latter is that it provides more information then a simple ping to
 
 ## Source Code Brief Desrciption
 
-Running the linkchecker.py will utilize the requests library from python to get the relevant EJP Soil Catalogue source.
-Run the command below
-* python linkchecker.py
-The urls selected from the requests will passed to linkchecker using the proper options.
-The output will be written on a csv file. 
-Writing the output to PostgrSQL database causes program to crash since various invalid characters and missing values occur at 
-various places.
+The source code leverages the [linkchecker](https://linkchecker.github.io/linkchecker/index.html) tool in order to check weather a link 
+froom the [EJP Soil Catalogue](https://catalogue.ejpsoil.eu/collections/metadata:main/items?offset=0)
+The [JSON](https://catalogue.ejpsoil.eu/collections/metadata:main/items?f=json) file is used in order to retrieve details about the pagination.
+A string is created for each page.For every url python [requests](https://pypi.org/project/requests/) library is used in order to retrieve all urls for each page.
+Linkchecker command:  
+ * subprocess.Popen(["docker", "run", "--rm", "-i", "-u", "1000:1000", "ghcr.io/linkchecker/linkchecker:latest", 
+    "--verbose", "--check-extern", "--recursion-level=1",  "--output=csv", url + "?f=html"])
+runs a container with the LinkChecker tool and instructs it to check the links in verbose mode, follow external links up to one level deep, and output the results in a CSV file format.
 
-## API
-The api.py file creates a FastAPI in order to retrieve links statuses. 
-Run the command below
+A FastAPI is created to provide endpoints based on the statuses of links, including those with status codes 300, 400, and 500, as well as those containing warnings.
+Command to run the FastAPI
 * python -m uvicorn api:app --reload --host 0.0.0.0 --port 8000 
-To view the service of the FastAPI on [http://127.0.0.1:8000/docs]
+  
+To view the running FastAPI navigate on: [http://127.0.0.1:8000/docs]
 
 ## CI/CD
-A workflow is provided in order to run it as a cronological job once per week every Sunday Midnight
-(However currently it is commemended to save running minutes since it takes about 80 minutes to complete)
+This workflow is designed to run as a cron job at midnight every Sunday.
+The execution time takes about 80 minutes to complete and more than 12.000 urls are checked.
+Currently the workflow is commented.
+
+## Known issues
+Attempting to write LinkChecker's output directly to a PostgreSQL database causes crashes due to encountering invalid characters and missing values within the data.

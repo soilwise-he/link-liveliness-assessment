@@ -76,7 +76,7 @@ def main():
     # Base URL
     base_url = 'https://catalogue.ejpsoil.eu/collections/metadata:main/items?offset='
 
-    # Generate URLs for each page
+    # Generate URLs for each page i.e(https://catalogue.ejpsoil.eu/collections/metadata:main/items?offset=0,50...)
     urls = [base_url + str(i * numbers_returned) + "&f=html" for i in range(total_pages)]
 
     # Initialize an empty set to store all unique links
