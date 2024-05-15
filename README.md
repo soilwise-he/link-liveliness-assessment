@@ -1,4 +1,4 @@
-# link-liveliness-assessment
+# OGC API - Records; link liveliness assessment
 
 A component which evaluates for a set of metadata records (describing either data or knowledge sources), if:
 
@@ -24,9 +24,9 @@ If endpoint is API, some sanity checks can be performed on the API:
 
 The benefit of latter is that it provides more information then a simple ping to the index page of the API, typical examples of standardised API's are SOAP, GraphQL, SPARQL, OpenAPI, WMS, WFS
 
-## GeoHealthCheck
+## OGC API - records
 
-[GeoHealthCheck](https://GeoHealthCheck.org) is a component to monitor livelyhood of typical OGC services (WMS, WFS, WCS, CSW). It is based on the [owslib](https://owslib.readthedocs.io/en/latest/) library, which provides a python implementation of various OGC services clients.
+OGC is in the process of adopting the [OGC API - Records](https://github.com/opengeospatial/ogcapi-records) specification. A standardised API to interact with Catalogues. The specification includes a datamodel for metadata. This tool assesses the linkage section of any record in an OGC API - Records.
 
 ## Source Code Brief Desrciption
 
@@ -52,3 +52,19 @@ Currently the workflow is commented.
 
 ## Known issues
 Attempting to write LinkChecker's output directly to a PostgreSQL database causes crashes due to encountering invalid characters and missing values within the data.
+
+
+## Roadmap
+
+### Report about results
+
+Stats are currently saved as CSV. Stats should be ingested into a format which can be used to create reports in a platform like Apache Superset
+
+### GeoHealthCheck integration
+
+[GeoHealthCheck](https://GeoHealthCheck.org) is a component to monitor livelyhood of typical OGC services (WMS, WFS, WCS, CSW). It is based on the [owslib](https://owslib.readthedocs.io/en/latest/) library, which provides a python implementation of various OGC services clients.
+
+## Soilwise-he project
+
+This work has been initiated as part of the [Soilwise-he project](https://soilwise-he.eu/).
+The project receives funding from the European Union’s HORIZON Innovation Actions 2022 under grant agreement No. 101112838.
