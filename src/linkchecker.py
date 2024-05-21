@@ -7,6 +7,7 @@ import csv
 import re
 import os
 
+# Remove comment'
 ejp_catalogue_json_url = "https://catalogue.ejpsoil.eu/collections/metadata:main/items?f=json"
 
 def get_pagination_info(url):
