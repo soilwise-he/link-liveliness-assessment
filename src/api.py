@@ -1,15 +1,35 @@
-from fastapi import FastAPI, APIRouter, Query
-import pandas as pd
+from fastapi import FastAPI, HTTPException
+from dotenv import load_dotenv
+from databases import Database
+from typing import List
+from pydantic import BaseModel
+import asyncpg
+import os
 
-app = FastAPI(
-    title="SOILWISE SERVICE PROJECT",
-    description="API that Retrieves EJPSOIL Catalogue URLs status",
-)
+# Load environment variables from .env file
+load_dotenv()
 
-# Define a route group
-urls_router = APIRouter(tags=["Retrieve URLs Info"])
+# Database connection setup
+# Load environment variables securely (replace with your actual variable names)
+DATABASE_URL = "postgresql://" + os.environ.get("POSTGRES_USER") + ":" +\
+    os.environ.get("POSTGRES_PASSWORD") + "@" + os.environ.get("POSTGRES_HOST") + ":" +\
+    os.environ.get("POSTGRES_PORT") + "/" + os.environ.get("POSTGRES_DB")
 
-redirection_statuses = [
+database = Database(DATABASE_URL)
+
+# FastAPI app instance
+app = FastAPI()
+
+# Define response model
+class StatusResponse(BaseModel):
+    id: int  # Example column, adjust based on your actual table schema
+    urlname: str
+    parentname: str
+    valid: str
+    warning: str
+
+# Define status lists
+REDIRECTION_STATUSES = [
     "301 Moved Permanently",
     "302 Found (Moved Temporarily)",
     "304 Not Modified",
@@ -17,7 +37,7 @@ redirection_statuses = [
     "308 Permanent Redirect"
 ]
 
-client_error_statuses = [
+CLIENT_ERROR_STATUSES = [
     "400 Bad Request",
     "401 Unauthorized",
     "403 Forbidden",
@@ -26,67 +46,61 @@ client_error_statuses = [
     "409 Conflict"
 ]
 
-server_error_statuses = [
+SERVER_ERROR_STATUSES = [
     "500 Internal Server Error",
     "501 Not Implemented",
     "503 Service Unavailable",
     "504 Gateway Timeout"
 ]
 
-data = pd.read_csv("soil_catalogue_link.csv")
-data = data.fillna('')
+# Helper function to execute SQL query and fetch results
+async def fetch_data(query: str, values: dict = {}):
+    try:
+        return await database.fetch_all(query=query, values=values)
+    except asyncpg.exceptions.UndefinedTableError:
+        raise HTTPException(status_code=500, detail="The specified table does not exist")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Database query failed") from e
 
-def paginate_data(data_frame: pd.DataFrame, skip: int = 0, limit: int = 10):
-    """
-    Paginates the result from DataFrame
-    Args:
-        data_frame: The DataFrame to paginate.
-        skip: The number of records to skip (default: 0).
-        limit: The maximum number of records to return per page (default: 10). 
-    """
-    return data_frame.iloc[skip: skip + limit]
+# Endpoint to retrieve data with redirection statuses
+@app.get('/Redirection_URLs/3xx', response_model=List[StatusResponse])
+async def get_redirection_statuses():
+    query = "SELECT * FROM linkchecker_output WHERE valid = ANY(:statuses)"
+    data = await fetch_data(query=query, values={'statuses': REDIRECTION_STATUSES})
+    return data
 
-def get_urls_by_category(category_statuses, column_to_check="valid"):
-    """
-    Filters URL from the DataFrame based on the provided status code list
-    The column containing the values to check ("default valid")
-    """
-    filtered_data = data[data[column_to_check].isin(category_statuses)]
-    filtered_rows = filtered_data.to_dict(orient='records')
-    return filtered_rows
+# Endpoint to retrieve data with client error statuses
+@app.get('/Client_Error_URLs/4xx', response_model=List[StatusResponse])
+async def get_client_error_statuses():
+    query = "SELECT * FROM linkchecker_output WHERE valid = ANY(:statuses)"
+    data = await fetch_data(query=query, values={'statuses': CLIENT_ERROR_STATUSES})
+    return data
 
-@urls_router.get("/Redirection_URLs/3xx", name="Get Redirection URLs 3xx")
-async def get_redirection_urls():
-    """
-    Retrieve URLs from the CSV classified as status code 3xx'
-    """
-    urls = get_urls_by_category(redirection_statuses)
-    return {"category": "3xx Redirection", "urls": urls}
+# Endpoint to retrieve data with server error statuses
+@app.get('/Server_Errors_URLs/5xx', response_model=List[StatusResponse])
+async def get_server_error_statuses():
+    query = "SELECT * FROM linkchecker_output WHERE valid = ANY(:statuses)"
+    data = await fetch_data(query=query, values={'statuses': SERVER_ERROR_STATUSES})
+    return data
 
-@urls_router.get("/Client_Error_URLs/4xx", name="Get Client Error URLs 4xx")
-async def get_client_error_urls():
-    """
-    Retrieves URLs from the CSV classified as status code 4xx
-    """
-    urls = get_urls_by_category(client_error_statuses)
-    return {"category": "4xx Client Error", "urls": urls}
+# Endpoint to retrieve data where the warning column is not empty
+@app.get('/URLs_Which_Have_Warnings', response_model=List[StatusResponse])
+async def get_non_empty_warnings():
+    query = "SELECT * FROM linkchecker_output WHERE warning != ''"
+    data = await fetch_data(query=query)
+    return data
 
-@urls_router.get("/Server_Error_URLs/5xx", name="Get Server Error URLs 5xx")
-async def get_server_error_urls():
-    """
-    Retrieves URLs from the CSV classified as status code 5xx
-    """
-    urls = get_urls_by_category(server_error_statuses)
-    return {"category": "5xx Server Error", "urls": urls}
+# Start the application
+@app.on_event('startup')
+async def startup():
+    try:
+        await database.connect()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Database connection failed") from e
 
-@urls_router.get("/URLs_Which_Have_Warnings", name="Get URLs that contain warnings")
-async def get_warning_urls(skip: int = Query(0, ge=0), limit: int = Query(10, ge=1)):
-    """
-    Retrieves URLs from the CSV that contain warnings
-    """
-    filtered_data = data[data['warning'] != '']
-    paginated_data = paginate_data(filtered_data, skip=skip, limit=limit)
-    return {"category": "Has Warnings", "urls": paginated_data.to_dict(orient='records')}
-
-# Include the router in the main app
-app.include_router(urls_router)
+@app.on_event('shutdown')
+async def shutdown():
+    try:
+        await database.disconnect()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Database disconnection failed") from e
