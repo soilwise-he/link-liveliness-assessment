@@ -34,9 +34,17 @@ Running the linkchecker.py will utilize the requests library from python to get 
 Run the command below
 * python linkchecker.py
 The urls selected from the requests will passed to linkchecker using the proper options.
-The output will be written on a csv file. 
-Writing the output to PostgrSQL database causes program to crash since various invalid characters and missing values occur at 
-various places.
+The output generated will be written to a PostgreSQL database.
+A .env is required to define the database connection parameters.
+More specifically the following parameters must be specified
+
+```
+    POSTGRES_HOST=
+    POSTGRES_PORT=
+    POSTGRES_DB=
+    POSTGRES_USER=
+    POSTGRES_PASSWORD=
+```
 
 ## API
 The api.py file creates a FastAPI in order to retrieve links statuses. 
@@ -44,6 +52,12 @@ Run the command below
 * python -m uvicorn api:app --reload --host 0.0.0.0 --port 8000 
 To view the service of the FastAPI on [http://127.0.0.1:8000/docs]
 
+# Docker
+A Docker instance must be running for the linkchecker command to work.
+
 ## CI/CD
 A workflow is provided in order to run it as a cronological job once per week every Sunday Midnight
 (However currently it is commemended to save running minutes since it takes about 80 minutes to complete)
+It is necessary to use the **secrets context in gitlab in order to be connected to database
+
+
