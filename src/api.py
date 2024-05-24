@@ -62,31 +62,30 @@ async def fetch_data(query: str, values: dict = {}):
     except Exception as e:
         raise HTTPException(status_code=500, detail="Database query failed") from e
 
-# Endpoint to retrieve data with redirection statuses
 @app.get('/Redirection_URLs/3xx', response_model=List[StatusResponse])
 async def get_redirection_statuses():
-    query = "SELECT * FROM linkchecker_output WHERE valid = ANY(:statuses)"
+    query = "SELECT DISTINCT * FROM linkchecker_output WHERE valid = ANY(:statuses)"
     data = await fetch_data(query=query, values={'statuses': REDIRECTION_STATUSES})
     return data
 
 # Endpoint to retrieve data with client error statuses
 @app.get('/Client_Error_URLs/4xx', response_model=List[StatusResponse])
 async def get_client_error_statuses():
-    query = "SELECT * FROM linkchecker_output WHERE valid = ANY(:statuses)"
+    query = "SELECT DISTINCT * FROM linkchecker_output WHERE valid = ANY(:statuses)"
     data = await fetch_data(query=query, values={'statuses': CLIENT_ERROR_STATUSES})
     return data
 
 # Endpoint to retrieve data with server error statuses
 @app.get('/Server_Errors_URLs/5xx', response_model=List[StatusResponse])
 async def get_server_error_statuses():
-    query = "SELECT * FROM linkchecker_output WHERE valid = ANY(:statuses)"
+    query = "SELECT DISTINCT * FROM linkchecker_output WHERE valid = ANY(:statuses)"
     data = await fetch_data(query=query, values={'statuses': SERVER_ERROR_STATUSES})
     return data
 
 # Endpoint to retrieve data where the warning column is not empty
 @app.get('/URLs_Which_Have_Warnings', response_model=List[StatusResponse])
 async def get_non_empty_warnings():
-    query = "SELECT * FROM linkchecker_output WHERE warning != ''"
+    query = "SELECT DISTINCT * FROM linkchecker_output WHERE warning != ''"
     data = await fetch_data(query=query)
     return data
 
