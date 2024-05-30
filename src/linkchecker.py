@@ -13,8 +13,12 @@ import os
 # Load environment variables from .env file
 load_dotenv()
 
+# base catalog
+
+base = "https://soilwise-he.containers.wur.nl/cat/"
+
 # Remove comment'
-ejp_catalogue_json_url = "https://catalogue.ejpsoil.eu/collections/metadata:main/items?f=json"
+catalogue_json_url = base + "collections/metadata:main/items?f=json"
 
 def setup_database():
     # Connect to the database
@@ -60,7 +64,7 @@ def setup_database():
 
 def get_pagination_info(url):
   try:
-    # Fetch ejpsoil JSON
+    # Fetch catalogue JSON
     response = requests.get(url)
     response.raise_for_status()  # Raise exception for HHTP errors
     data = response.json()
@@ -122,12 +126,12 @@ def main():
     conn, cur = setup_database()
     
     print("Time started processing links.")
-    print("Loading EJP SOIL Catalogue links...")
+    print("Loading Catalogue links...")
     filename = "soil_catalogue_link.csv"
-    total_pages, numbers_returned = get_pagination_info(ejp_catalogue_json_url)
+    total_pages, numbers_returned = get_pagination_info(catalogue_json_url)
 
     # Base URL
-    base_url = 'https://catalogue.ejpsoil.eu/collections/metadata:main/items?offset='
+    base_url = base + 'collections/metadata:main/items?offset='
 
     # Generate URLs for each page
     urls = [base_url + str(i * numbers_returned) + "&f=html" for i in range(total_pages)]
@@ -141,12 +145,14 @@ def main():
     
     # Define the formats to be removed
     formats_to_remove = [
-        'https://catalogue.ejpsoil.eu/collections/metadata:main/items?offset',
+        'collections/metadata:main/items?offset',
         '?f=json'
     ]
 
     # Filter out links with the specified formats
-    filtered_links = {link for link in all_links if not any(format_to_remove in link for format_to_remove in formats_to_remove)}
+    print(all_links)
+    print(formats_to_remove)
+    filtered_links = {link for link in all_links if not any(format_to_remove in (link or "") for format_to_remove in formats_to_remove)}
     
     # Remove the existing file if it exists
     if os.path.exists(filename):
