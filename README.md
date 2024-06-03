@@ -2,6 +2,7 @@
 
 - forked from https://github.com/soilwise-he/link-liveliness-assessment
 - add gitlab ci script
+- in harbor soilwise project
 
 # OGC API - Records; link liveliness assessment
 
