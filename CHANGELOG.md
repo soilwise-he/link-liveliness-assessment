@@ -1,3 +1,10 @@
+## [1.0.2](https://git.wur.nl/isric/ict/link-liveliness-assessment/compare/1.0.1...1.0.2) (2024-06-03)
+
+
+### Bug Fixes
+
+* use soilwise project ([56efe30](https://git.wur.nl/isric/ict/link-liveliness-assessment/commit/56efe3007bb287389fdc7ea5548be19881f20aad))
+
 ## [1.0.1](https://git.wur.nl/isric/ict/link-liveliness-assessment/compare/1.0.0...1.0.1) (2024-05-31)
 
 
