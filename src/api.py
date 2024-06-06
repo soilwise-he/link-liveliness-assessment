@@ -19,7 +19,8 @@ DATABASE_URL = "postgresql://" + os.environ.get("POSTGRES_USER") + ":" +\
 database = Database(DATABASE_URL)
 
 # FastAPI app instance
-app = FastAPI()
+rootpath=os.environ.get("ROOTPATH") or "/" 
+app = FastAPI(root_path=rootpath)
 
 # Define response model
 class StatusResponse(BaseModel):
