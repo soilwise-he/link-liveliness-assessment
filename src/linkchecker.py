@@ -6,7 +6,6 @@ import psycopg2.extras
 import requests
 import math
 import time
-import csv
 import re
 import os
 
@@ -130,7 +129,7 @@ def main():
     
     print("Time started processing links.")
     print("Loading EJP SOIL Catalogue links...")
-    total_pages, numbers_returned = get_pagination_info(ejp_catalogue_json_url)
+    total_pages, numbers_returned = get_pagination_info(catalogue_json_url)
 
     # Base URL
     base_url = base + 'collections/metadata:main/items?offset='
@@ -152,7 +151,7 @@ def main():
     ]
 
     # Filter out links with the specified formats
-    filtered_links = {link for link in all_links if not any(format_to_remove in link for format_to_remove in formats_to_remove)}
+    filtered_links = {link for link in all_links if not any(format_to_remove in (link or "") for format_to_remove in formats_to_remove)}
 
     # Specify the fields to include in the CSV file
     fields_to_include = ['urlname', 'parentname', 'baseref', 'valid', 'result', 'warning', 'info', 'url', 'name']
