@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 from databases import Database
 from typing import List
 from pydantic import BaseModel
+from urllib.parse import unquote
 import asyncpg
 import os
 
@@ -87,6 +88,13 @@ async def get_server_error_statuses():
 async def get_non_empty_warnings():
     query = "SELECT DISTINCT * FROM linkchecker_output WHERE warning != ''"
     data = await fetch_data(query=query)
+    return data
+
+# Endpoint to retrieve data with client error statuses
+@app.get('/status/{item:path}', response_model=List[StatusResponse])
+async def get_status_for_url(item):
+    query = "SELECT * FROM linkchecker_output WHERE urlname = :item"
+    data = await fetch_data(query=query, values={'item': item })
     return data
 
 # Start the application
