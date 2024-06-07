@@ -13,8 +13,12 @@ import os
 # Load environment variables from .env file
 load_dotenv()
 
+# base catalog
+
+base = "https://soilwise-he.containers.wur.nl/cat/"
+
 # Remove comment'
-ejp_catalogue_json_url = "https://catalogue.ejpsoil.eu/collections/metadata:main/items?f=json"
+catalogue_json_url = base + "collections/metadata:main/items?f=json"
 
 def setup_database():
     # Connect to the database
@@ -60,7 +64,7 @@ def setup_database():
 
 def get_pagination_info(url):
   try:
-    # Fetch ejpsoil JSON
+    # Fetch catalogue JSON
     response = requests.get(url)
     response.raise_for_status()  # Raise exception for HHTP errors
     data = response.json()
@@ -129,7 +133,7 @@ def main():
     total_pages, numbers_returned = get_pagination_info(ejp_catalogue_json_url)
 
     # Base URL
-    base_url = 'https://catalogue.ejpsoil.eu/collections/metadata:main/items?offset='
+    base_url = base + 'collections/metadata:main/items?offset='
 
     # Generate URLs for each page
     urls = [base_url + str(i * numbers_returned) + "&f=html" for i in range(total_pages)]
@@ -143,7 +147,7 @@ def main():
     
     # Define the formats to be removed
     formats_to_remove = [
-        'https://catalogue.ejpsoil.eu/collections/metadata:main/items?offset',
+        'collections/metadata:main/items?offset',
         '?f=json'
     ]
 
