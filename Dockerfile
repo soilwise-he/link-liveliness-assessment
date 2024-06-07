@@ -12,7 +12,7 @@ ENV POSTGRES_HOST=host.docker.internal
 ENV POSTGRES_PORT=5432
 ENV POSTGRES_DB=postgres
 ENV POSTGRES_USER=postgres
-ENV POSTGRES_PASSWORD=w4qu+0sj
+ENV POSTGRES_PASSWORD=******
 
 WORKDIR /home/link-liveliness-assessment
 
