@@ -5,4 +5,5 @@ pydantic
 uvicorn
 pandas
 asyncpg
+linkchecker
 databases

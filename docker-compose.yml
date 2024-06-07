@@ -1,0 +1,16 @@
+services:
+  linkchecker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: linkchecker
+    command: python linkchecker.py
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python api.py
+    ports:
+      - "8000:8000"
+    depends_on:
+      - linkchecker

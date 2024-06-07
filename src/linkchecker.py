@@ -104,8 +104,11 @@ def run_linkchecker(urls):
     for url in urls:
         # Run LinkChecker Docker command with specified user and group IDs for each URL
         process = subprocess.Popen([
-            "docker", "run", "--rm", "-i", "-u", "1000:1000", "ghcr.io/linkchecker/linkchecker:latest", 
-            "--verbose", "--check-extern", "--recursion-level=1",  "--output=csv",
+           "linkchecker",
+            "--verbose",
+            "--check-extern",
+            "--recursion-level=1",
+            "--output=csv",
             url + "?f=html"
         ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
@@ -123,7 +126,6 @@ def main():
     
     print("Time started processing links.")
     print("Loading EJP SOIL Catalogue links...")
-    filename = "soil_catalogue_link.csv"
     total_pages, numbers_returned = get_pagination_info(ejp_catalogue_json_url)
 
     # Base URL
@@ -147,10 +149,6 @@ def main():
 
     # Filter out links with the specified formats
     filtered_links = {link for link in all_links if not any(format_to_remove in link for format_to_remove in formats_to_remove)}
-    
-    # Remove the existing file if it exists
-    if os.path.exists(filename):
-        os.remove(filename)
 
     # Specify the fields to include in the CSV file
     fields_to_include = ['urlname', 'parentname', 'baseref', 'valid', 'result', 'warning', 'info', 'url', 'name']

@@ -8,11 +8,11 @@ RUN apt-get update && apt-get install --yes \
 
 RUN adduser --uid 1000 --gecos '' --disabled-password linky
 
-ENV POSTGRES_HOST=localhost
+ENV POSTGRES_HOST=host.docker.internal
 ENV POSTGRES_PORT=5432
 ENV POSTGRES_DB=postgres
 ENV POSTGRES_USER=postgres
-ENV POSTGRES_PASSWORD=******
+ENV POSTGRES_PASSWORD=w4qu+0sj
 
 WORKDIR /home/link-liveliness-assessment
 
@@ -35,5 +35,3 @@ WORKDIR /home/link-liveliness-assessment/src
 EXPOSE 8000
 
 USER linky
-
-ENTRYPOINT [ "python3", "-m", "uvicorn", "api:app", "--reload", "--host", "0.0.0.0", "--port", "8000" ]
