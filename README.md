@@ -1,3 +1,9 @@
+# isric instance
+
+- forked from https://github.com/soilwise-he/link-liveliness-assessment
+- add gitlab ci script
+- in harbor soilwise project
+
 # OGC API - Records; link liveliness assessment
 
 A component which evaluates for a set of metadata records (describing either data or knowledge sources), if:
