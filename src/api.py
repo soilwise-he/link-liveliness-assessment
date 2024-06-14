@@ -94,8 +94,9 @@ async def get_non_empty_warnings():
 # Endpoint to retrieve data with client error statuses
 @app.get('/status/{item:path}', response_model=List[StatusResponse])
 async def get_status_for_url(item):
+    decoded_item = unquote(item)
     query = "SELECT * FROM linkchecker_output WHERE urlname = :item"
-    data = await fetch_data(query=query, values={'item': item })
+    data = await fetch_data(query=query, values={'item': decoded_item })
     return data
 
 # Start the application

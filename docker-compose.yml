@@ -1,0 +1,17 @@
+services:
+  linkchecker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: linkchecker
+    command: python linkchecker.py
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: FastApi
+    ports:
+      - "8000:8000"
+    command: python3 -m uvicorn api:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      - linkchecker
