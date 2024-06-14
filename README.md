@@ -28,6 +28,12 @@ The benefit of latter is that it provides more information then a simple ping to
 
 OGC is in the process of adopting the [OGC API - Records](https://github.com/opengeospatial/ogcapi-records) specification. A standardised API to interact with Catalogues. The specification includes a datamodel for metadata. This tool assesses the linkage section of any record in an OGC API - Records.
 
+Set the endpoint to be analysed as 2 environment variables
+
+```
+export OGCAPI_URL=https://soilwise-he.containers.wur.nl/cat/
+export OGCAPI_COLLECTION=metadata:main
+```
 
 ## Source Code Brief Desrciption
 
@@ -49,11 +55,21 @@ More specifically the following parameters must be specified
 
 ## API
 The api.py file creates a FastAPI in order to retrieve links statuses. 
-Run the command below
-* python -m uvicorn api:app --reload --host 0.0.0.0 --port 8000 
+Run the command below:
+```
+python -m uvicorn api:app --reload --host 0.0.0.0 --port 8000 
+```
 To view the service of the FastAPI on [http://127.0.0.1:8000/docs]
 
-# Docker
+## Deploy `linky` at a path
+
+You can set `ROOTPATH` env var to run the api at a path (default is at root)
+
+```
+export ROOTPATH=/linky
+```
+
+## Docker
 A Docker instance must be running for the linkchecker command to work.
 
 ## CI/CD
