@@ -1,3 +1,10 @@
+## [1.0.4](https://git.wur.nl/soilwise/link-liveliness-assessment/compare/1.0.3...1.0.4) (2024-06-14)
+
+
+### Bug Fixes
+
+* introduce rootpath ([dd29f06](https://git.wur.nl/soilwise/link-liveliness-assessment/commit/dd29f06306e3e4dbe340a404147ca79a12603881))
+
 ## [1.0.2](https://git.wur.nl/isric/ict/link-liveliness-assessment/compare/1.0.1...1.0.2) (2024-06-03)
 
 
