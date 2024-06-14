@@ -8,6 +8,9 @@ RUN apt-get update && apt-get install --yes \
 
 RUN adduser --uid 1000 --gecos '' --disabled-password linky
 
+ENV OGCAPI_URL=http://localhost
+ENV OGCAPI_COLLECTION=metadata:main
+ENV ROOTPATH=/
 ENV POSTGRES_HOST=host.docker.internal
 ENV POSTGRES_PORT=5432
 ENV POSTGRES_DB=postgres
