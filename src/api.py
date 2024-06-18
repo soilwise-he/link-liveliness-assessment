@@ -99,6 +99,17 @@ async def get_status_for_url(item):
     data = await fetch_data(query=query, values={'item': decoded_item })
     return data
 
+# Endpoint to retrieve URLs that that timed out. Timeout is set to 5 seconds currently  
+@app.get('/Timeout_URLs', response_model=List[StatusResponse])
+async def get_timeout_urls():
+    query = """
+        SELECT DISTINCT *
+        FROM linkchecker_output
+        WHERE valid LIKE '%ReadTimeout%' OR valid LIKE '%ConnectTimeout%'
+    """
+    data = await fetch_data(query=query)
+    return data
+
 # Start the application
 @app.on_event('startup')
 async def startup():
