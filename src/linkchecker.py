@@ -54,7 +54,23 @@ def setup_database():
         )
         """
         cur.execute(create_table_query)
-
+        
+    # Check if the validation_history table exists
+    cur.execute("SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name = 'validation_history')")
+    validation_history_table_exists = cur.fetchone()[0]
+    
+    if not validation_history_table_exists:
+        # Create the validation_history table if it doesn't exist
+        create_validation_history_table = """
+            CREATE TABLE validation_history {
+                id SERIAL PRIMARY KEY,
+                url TEXT NOT NULL,
+                validation_result TEXT NOT NULL,
+                timestamp TIMESTAMP DEFAULT CURRENT TIMESTAMP
+            }
+        """
+        cur.execute(create_validation_history_table)
+        
     # Commit the changes
     conn.commit()
 
@@ -121,6 +137,14 @@ def run_linkchecker(urls):
         # Wait for the process to finish
         process.wait()
 
+def insert_validation_history(conn, url, validation_result):
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO validation_history (url, validation_result) VALUES (%s, %s)",
+            (url, validation_result)
+        )
+    conn.commit()
+
 def main():
     start_time = time.time()  # Start timing
     # Set up the database and create the table
@@ -172,6 +196,8 @@ def main():
             """
             cur.execute(insert_query, filtered_values)
             conn.commit()
+            
+            insert_validation_history(conn, filtered_values[0], filtered_values[3])
     
     print("LinkChecker output written to PostgreSQL database")
 
