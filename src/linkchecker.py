@@ -62,12 +62,12 @@ def setup_database():
     if not validation_history_table_exists:
         # Create the validation_history table if it doesn't exist
         create_validation_history_table = """
-            CREATE TABLE validation_history {
+            CREATE TABLE validation_history (
                 id SERIAL PRIMARY KEY,
                 url TEXT NOT NULL,
                 validation_result TEXT NOT NULL,
-                timestamp TIMESTAMP DEFAULT CURRENT TIMESTAMP
-            }
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
         """
         cur.execute(create_validation_history_table)
         
