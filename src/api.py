@@ -21,7 +21,10 @@ DATABASE_URL = "postgresql://" + os.environ.get("POSTGRES_USER") + ":" +\
 database = Database(DATABASE_URL)
 
 # FastAPI app instance
-app = FastAPI()
+app = FastAPI(
+    title="Linkchecker-Liveness",
+    summary="Evaluate the status of URLs from OGC data catalogues",
+)
 logger = logging.getLogger(__name__)
 
 # Define response model
@@ -40,6 +43,9 @@ class URLAvailabilityResponse(BaseModel):
     result: Optional[str]
     warning: Optional[str]
     lastChecked: Optional[datetime]
+    
+class DeprecatedUrlsResponse(BaseModel):
+    url: Optional[str]
         
 # Define status lists
 REDIRECTION_STATUSES = [
@@ -189,6 +195,22 @@ async def get_all_url_status_history(
         logging.error(f"Error occurred: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
     
+@app.get('/Deprecated URLs', response_model=List[DeprecatedUrlsResponse])
+async def get_deprecated_urls():
+    query = """
+    SELECT
+        us.url AS url
+    FROM 
+        url_status us
+    WHERE us.deprecated = TRUE
+    """
+    try:
+        data = await fetch_data(query=query)
+        return data
+    except Exception as e:
+        logging.error(f"Error occurred: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Start the application
 @app.on_event('startup')
 async def startup():
