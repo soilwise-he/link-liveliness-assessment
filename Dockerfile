@@ -38,3 +38,5 @@ WORKDIR /home/link-liveliness-assessment/src
 EXPOSE 8000
 
 USER linky
+
+ENTRYPOINT [ "python3", "-m", "uvicorn", "api:app", "--reload", "--host", "0.0.0.0", "--port", "8000" ]
