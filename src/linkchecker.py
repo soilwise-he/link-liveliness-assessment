@@ -17,10 +17,11 @@ MAX_FAILURES = 10
 load_dotenv()
 
 # base catalog
-base = "https://soilwise-he.containers.wur.nl/cat/"
+base = os.environ.get("OGCAPI_URL") or "https://demo.pycsw.org/gisdata"
+collection = os.environ.get("OGCAPI_COLLECTION") or "metadata:main"
 
 # Remove comment'
-catalogue_json_url = base + "collections/metadata:main/items?f=json"
+catalogue_json_url = base + "collections/" + collection + "/items?f=json"
 
 def setup_database():
     conn = psycopg2.connect(
@@ -212,7 +213,7 @@ def main():
     total_pages, numbers_returned = get_pagination_info(catalogue_json_url)
 
     # Base URL
-    base_url = base + 'collections/metadata:main/items?offset='
+    base_url = base + 'collections/' + collection + '/items?offset='
 
     # Generate URLs for each page
     urls = [base_url + str(i * numbers_returned) + "&f=html" for i in range(total_pages)]
@@ -226,7 +227,7 @@ def main():
     
     # Define the formats to be removed
     formats_to_remove = [
-        'collections/metadata:main/items?offset',
+        'collections/' + collection + '/items?offset',
         '?f=json'
     ]
     

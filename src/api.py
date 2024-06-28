@@ -19,13 +19,16 @@ DATABASE_URL = "postgresql://" + os.environ.get("POSTGRES_USER") + ":" +\
     os.environ.get("POSTGRES_PORT") + "/" + os.environ.get("POSTGRES_DB")
 
 database = Database(DATABASE_URL)
+rootpath = os.environ.get("ROOTPATH") or "/"
 
 # FastAPI app instance
 app = FastAPI(
     title="Linkchecker-Liveness",
     summary="Evaluate the status of URLs from OGC data catalogues",
+    root_path=rootpath
 )
 logger = logging.getLogger(__name__)
+
 
 # Define response model
 class StatusResponse(BaseModel):
