@@ -61,6 +61,31 @@ python -m uvicorn api:app --reload --host 0.0.0.0 --port 8000
 ```
 To view the service of the FastAPI on [http://127.0.0.1:8000/docs]
 
+
+# Get current URL Status History 
+This endpoint returns the history of a specific URL. 
+Let say we have the status of a specific URL over time 
+
+| id  | url                    | validation_result | timestamp               |
+|-----|------------------------|-------------------|-------------------------|
+| 1   | https://example.com    | 200 OK            | 2023-01-01 10:00:00+00  |
+| 2   | https://wikipedia.com  | 404 Not Found     | 2023-01-01 10:00:05+00  |
+| 3   | https://example.com    | 200 OK            | 2023-01-02 11:00:00+00  |
+| 4   | https://wikipedia.com  | 500 Server Error  | 2023-01-02 11:00:05+00  |
+| 5   | https://wikipedia.com  | 200 OK            | 2023-01-02 11:00:10+00  |
+
+Running the `/Single_url_status_history` endpoint for the 
+https://wikipedia.com and setting limit = 2 it will fetch the following result:
+
+| id  | url                    | validation_result | timestamp               |
+|-----|------------------------|-------------------|-------------------------|
+| 1   | https://wikipedia.com  | 500 Server Error  | 2023-01-02 11:00:05+00  |
+| 2   | https://wikipedia.com  | 404 Not Found     | 2023-01-01 10:00:05+00  |
+
+This is the URL's history in descenting order in datetime
+
+# Docker
+=======
 ## Deploy `linky` at a path
 
 You can set `ROOTPATH` env var to run the api at a path (default is at root)
@@ -70,6 +95,7 @@ export ROOTPATH=/linky
 ```
 
 ## Docker
+
 A Docker instance must be running for the linkchecker command to work.
 
 ## CI/CD
