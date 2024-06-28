@@ -20,8 +20,8 @@ load_dotenv()
 base = os.environ.get("OGCAPI_URL") or "https://demo.pycsw.org/gisdata"
 collection = os.environ.get("OGCAPI_COLLECTION") or "metadata:main"
 
-# Remove comment'
-catalogue_json_url = base + "collections/" + collection + "/items?f=json"
+# format catalogue path with f-string
+catalogue_json_url= f"{base}/collections/{collection}/items?f=json"
 
 def setup_database():
     conn = psycopg2.connect(
@@ -124,6 +124,7 @@ def run_linkchecker(urls):
             "--verbose",
             "--check-extern",
             "--recursion-level=1",
+            "--timeout=5",
             "--output=csv",
             url + "?f=html"
         ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
