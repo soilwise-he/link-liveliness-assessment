@@ -61,7 +61,6 @@ python -m uvicorn api:app --reload --host 0.0.0.0 --port 8000
 ```
 To view the service of the FastAPI on [http://127.0.0.1:8000/docs]
 
-
 # Get current URL Status History 
 This endpoint returns the history of a specific URL. 
 Let say we have the status of a specific URL over time 
@@ -85,7 +84,7 @@ https://wikipedia.com and setting limit = 2 it will fetch the following result:
 This is the URL's history in descenting order in datetime
 
 # Docker
-=======
+
 ## Deploy `linky` at a path
 
 You can set `ROOTPATH` env var to run the api at a path (default is at root)
