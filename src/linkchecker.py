@@ -10,7 +10,7 @@ import re
 import os
 
 # When a URL reaches MAX_FAILURES consecutive failures it's marked
-# as deprecated and excluded from future checks
+# as deprecated and excluded from future insertions in database
 MAX_FAILURES = 10
 
 # Load environment variables from .env file
@@ -21,9 +21,7 @@ base = os.environ.get("OGCAPI_URL") or "https://demo.pycsw.org/gisdata"
 collection = os.environ.get("OGCAPI_COLLECTION") or "metadata:main"
 
 # format catalogue path with f-string
-# catalogue_json_url= f"{base}/collections/{collection}/items?f=json"
-ejp_catalogue_json_url = "https://catalogue.ejpsoil.eu/collections/metadata:main/items?f=json"
-
+catalogue_json_url= f"{base}/collections/{collection}/items?f=json"
 
 def setup_database():
     conn = psycopg2.connect(
@@ -35,7 +33,7 @@ def setup_database():
     )
     cur = conn.cursor()
    
-    # Drop tables in reverse order of dependency
+    # Drop tables (only for development purposes)
     # cur.execute("DROP TABLE IF EXISTS validation_history CASCADE")
     # cur.execute("DROP TABLE IF EXISTS parent CASCADE")
     # cur.execute("DROP TABLE IF EXISTS links CASCADE")
@@ -61,7 +59,8 @@ def setup_database():
         id SERIAL PRIMARY KEY,
         parentname TEXT NULL,
         baseref TEXT NULL,
-        fk_link INTEGER REFERENCES links(id_link)
+        fk_link INTEGER REFERENCES links(id_link),
+        UNIQUE (parentname, baseref, fk_link)
     )
     """)
    
@@ -71,7 +70,7 @@ def setup_database():
         id SERIAL PRIMARY KEY,
         fk_link INTEGER REFERENCES links(id_link),
         validation_result TEXT NOT NULL,
-        timestamp TIMESTAMP
+        timestamp TIMESTAMP NOT NULL
     )
     """)
    
@@ -124,8 +123,12 @@ def run_linkchecker(urls):
     for url in urls:
         # Run LinkChecker Docker command with specified user and group IDs for each URL
         process = subprocess.Popen([
-            "docker", "run", "--rm", "-i", "-u", "1000:1000", "ghcr.io/linkchecker/linkchecker:latest",
-            "--verbose", "--check-extern", "--recursion-level=1",  "--output=csv",
+           "linkchecker",
+            "--verbose",
+            "--check-extern",
+            "--recursion-level=1",
+            "--timeout=5",
+            "--output=csv",
             url + "?f=html"
         ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
@@ -196,6 +199,7 @@ def insert_parent(conn, parentname, baseref, link_id):
         cur.execute("""
             INSERT INTO parent (parentname, baseref, fk_link)
             VALUES (%s, %s, %s)
+            ON CONFLICT (parentname, baseref, fk_link) DO NOTHING
         """, (parentname, baseref, link_id))  
        
         # Commit the transaction
@@ -219,17 +223,6 @@ def get_active_urls(conn):
         else:
             cur.execute("SELECT url FROM validation_history WHERE NOT deprecated")
             return [row[0] for row in cur.fetchall()]
-       
-def get_all_urls(conn):
-    with conn.cursor() as cur:
-        cur.execute("SELECT COUNT(*) FROM validation_history")
-        count = cur.fetchone()[0]
-       
-        if count == 0:
-            return None # The table is empty
-        else:
-            cur.execute("SELECT url FROM validation_history")
-            return [row[0] for row in cur.fetchall()]
 
 def main():
     start_time = time.time()  # Start timing
@@ -238,8 +231,8 @@ def main():
     conn, cur = setup_database()
    
     print('Time started processing links.')
-    print(f'Loading {ejp_catalogue_json_url} links...')
-    total_pages, numbers_returned = get_pagination_info(ejp_catalogue_json_url)
+    print(f'Loading {catalogue_json_url} links...')
+    total_pages, numbers_returned = get_pagination_info(catalogue_json_url)
 
     # Base URL
     base_url = base + 'collections/' + collection + '/items?offset='
@@ -259,16 +252,6 @@ def main():
         'collections/' + collection + '/items?offset',
         '?f=json'
     ]
-   
-    # Get the list of active (non-deprecated) URLs
-    # all_known_urls = get_all_urls(conn)
-
-    # if all_known_urls is None:
-    #     # First run on empty table, check all links
-    #     links_to_check = all_links
-    # else:
-    #     # Check all known links plus any new links
-    #     links_to_check = set(all_known_urls) | all_links
            
     # Specify the fields to include in the CSV file
     fields_to_include = ['urlname', 'parentname', 'baseref', 'valid', 'result', 'warning', 'info']
@@ -315,49 +298,3 @@ def main():
  
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
