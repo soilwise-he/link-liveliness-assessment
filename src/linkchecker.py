@@ -1,5 +1,6 @@
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
+from urllib.parse import urlparse, parse_qs, urlencode
 import subprocess
 import psycopg2
 import psycopg2.extras
@@ -119,24 +120,40 @@ def extract_links(url):
         print(f"Error extracting links from {url}: {e}")
         return []
 
-def run_linkchecker(urls):
-    for url in urls:
-        # Run LinkChecker Docker command with specified user and group IDs for each URL
-        process = subprocess.Popen([
-           "linkchecker",
-            "--verbose",
-            "--check-extern",
-            "--recursion-level=1",
-            "--timeout=5",
-            "--output=csv",
-            url + "?f=html"
-        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+def check_single_url(url):
+    process = subprocess.Popen([
+        "linkchecker",
+        "--verbose",
+        "--check-extern",
+        "--recursion-level=0",
+        "--timeout=5",
+        "--output=csv",
+        url + "?f=html"
+    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-        # Process the output line by line and yield each line
-        for line in process.stdout:
-            yield line.decode('utf-8').strip()  # Decode bytes to string and strip newline characters
-        # Wait for the process to finish
-        process.wait()
+    # Process.communicate is good for shorter-running processes 
+    stdout, _ = process.communicate()
+
+    return stdout.decode('utf-8').strip().split('\n')
+
+def run_linkchecker(url):
+    # Run LinkChecker Docker command with specified user and group IDs for each URL
+    process = subprocess.Popen([
+        "linkchecker",
+        "--verbose",
+        "--check-extern",
+        "--recursion-level=1",
+        "--timeout=5",
+        "--output=csv",
+        url + "?f=html"
+    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    # Process the output line by line and yield each line
+    # Memory efficient for large outputs
+    for line in process.stdout:
+        yield line.decode('utf-8').strip()  # Decode bytes to string and strip newline characters
+    # Wait for the process to finish
+    process.wait()
        
 def insert_or_update_link(conn, urlname, status, result, info, warning, is_valid):
     
@@ -223,6 +240,35 @@ def get_active_urls(conn):
         else:
             cur.execute("SELECT url FROM validation_history WHERE NOT deprecated")
             return [row[0] for row in cur.fetchall()]
+        
+def determine_service_type(url):
+    ogc_patterns = ['/wms', '/wfs', '/csw', '/wcs', 'service=']
+    
+    if any(pattern in url.lower() for pattern in ogc_patterns):
+        parsed_url = urlparse(url)
+        query_params = parse_qs(parsed_url.query)
+        
+        query_params.pop('service', None)
+        query_params.pop('request', None)
+        
+        query_params['request'] = ['GetCapabilities']
+        
+        if 'service' not in query_params:
+            if '/wms' in parsed_url.path.lower():
+                query_params['service'] = ['WMS']
+            elif '/wfs' in parsed_url.path.lower():
+                query_params['service'] = ['WFS']
+            elif '/csw' in parsed_url.path.lower():
+                query_params['service'] = ['CSW']
+            elif '/wcs' in parsed_url.path.lower():
+                query_params['service'] = ['WCS']
+        
+        new_query = urlencode(query_params, doseq=True)
+        new_url = parsed_url._replace(query=new_query).geturl()
+        
+        return new_url
+    
+    return url
 
 def main():
     start_time = time.time()  # Start timing
@@ -247,43 +293,45 @@ def main():
         extracted_links = extract_links(url)
         all_links.update(extracted_links)  # Add new links to the set of all links
    
-    # Define the formats to be removed
-    formats_to_remove = [
-        'collections/' + collection + '/items?offset',
-        '?f=json'
-    ]
-           
     # Specify the fields to include in the CSV file
     fields_to_include = ['urlname', 'parentname', 'baseref', 'valid', 'result', 'warning', 'info']
 
     print("Checking Links...")
+    
     # Run LinkChecker and process the output
-    for line in run_linkchecker(all_links):
-        if re.match(r'^http', line):
-            # Remove trailing semicolon and split by semicolon
-            values = line.rstrip(';').split(';')
-           
-            # Filter and pad values based on fields_to_include
-            filtered_values = [str(values[i]) if i < len(values) else "" for i in range(len(fields_to_include))]
-           
-            # Destructure filtered_values
-            urlname, parentname, baseref, valid, result, warning, info = filtered_values
-            # print(f"""
-            #     Urlname:    {urlname}
-            #     parentname: {parentname}
-            #     baseref:    {baseref}
-            #     valid:      {valid}
-            #     result:     {result}
-            #     warning:    {warning}
-            #     info:       {info}
-            #     Is valid:   {is_valid_status(valid)}
-            # """)
-            is_valid = is_valid_status(valid)
-
-            link_id = insert_or_update_link(conn, urlname, valid, result, info, warning, is_valid)
-
-            # Insert parent information
-            insert_parent(conn, parentname, baseref, link_id)
+    urls_to_recheck = set()
+    print("Initial Link Checking...")
+    for url in all_links:
+        for line in run_linkchecker(url):
+            if re.match(r'^http', line):
+                values = line.rstrip(';').split(';')
+                urlname = values[0]               
+                
+                # Parse initial check results
+                filtered_values = [str(values[i]) if i < len(values) else "" for i in range(len(fields_to_include))]
+                urlname, parentname, baseref, valid, result, warning, info = filtered_values
+                
+                # Determine if URL needs to be rechecked
+                processed_url = determine_service_type(urlname)
+                if processed_url != urlname:
+                    urls_to_recheck.add(processed_url)
+                else:
+                    # If URL doesn't need reprocessing, insert results directly
+                    is_valid = is_valid_status(valid)
+                    link_id = insert_or_update_link(conn, urlname, valid, result, info, warning, is_valid)
+                    insert_parent(conn, parentname, baseref, link_id)
+    
+    print("Rechecking OGC processed URLs...")
+    for url in urls_to_recheck:
+        results = check_single_url(url)
+        for line in results:
+            if re.match(r'^http', line):
+                values = line.rstrip(';').split(';')
+                filtered_values = [str(values[i]) if i < len(values) else "" for i in range(len(fields_to_include))]
+                urlname, parentname, baseref, valid, result, warning, info = filtered_values
+                is_valid = is_valid_status(valid)
+                link_id = insert_or_update_link(conn, urlname, valid, result, info, warning, is_valid)
+                insert_parent(conn, parentname, baseref, link_id)
 
     # conn.commit()
     print("LinkChecker output written to PostgreSQL database")
