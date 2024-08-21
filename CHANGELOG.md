@@ -1,3 +1,10 @@
+## [1.0.6](https://git.wur.nl/soilwise/link-liveliness-assessment/compare/1.0.5...1.0.6) (2024-08-21)
+
+
+### Bug Fixes
+
+* docker build ([b57d05b](https://git.wur.nl/soilwise/link-liveliness-assessment/commit/b57d05b30062177c1c504714a4e161de0825e5f8))
+
 ## [1.0.5](https://git.wur.nl/soilwise/link-liveliness-assessment/compare/1.0.4...1.0.5) (2024-08-21)
 
 
