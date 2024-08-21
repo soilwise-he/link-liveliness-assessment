@@ -1,4 +1,7 @@
-# OGC API - Records; link liveliness assessment
+# OGC API - Records; link liveliness assessment tool
+
+### Overview
+The linkchecker component is designed to evaluate the validity and accuracy of links within metadata records in the OGC API - Records System. 
 
 A component which evaluates for a set of metadata records (describing either data or knowledge sources), if:
 
@@ -6,10 +9,9 @@ A component which evaluates for a set of metadata records (describing either dat
 - the links within the repository are valid
 - link metadata represents accurately the resource
 
-The component either returns a http status: 200 (ok), 403 (non autorized), 404 (not found), 500 (error), ...
-Status 302 is forwarded to new location and the test is repeated.
+The component either returns a http status: 200 (ok), 401 (non autorized), 404 (not found), 500 (server error)
 
-The component runs an evaluation for a single resource at request, or runs tests at intervals providing a history of availability 
+The component runs an evaluation for a single resource at request, or runs tests at intervals providing a history of availability
 
 A link either points to:
 
@@ -21,13 +23,34 @@ If endpoint is API, some sanity checks can be performed on the API:
 
 - Identify if the API adopted any API-standard
 - IF an API standard is adopted, does the API support basic operations of that API
+  
+The benefit of latter is that it provides more information then a simple ping to the index page of the API, typical examples of standardised API's are SOAP, 
+GraphQL, SPARQL, OpenAPI, WMS, WFS
 
-The benefit of latter is that it provides more information then a simple ping to the index page of the API, typical examples of standardised API's are SOAP, GraphQL, SPARQL, OpenAPI, WMS, WFS
+***Sample response*** 
+```
+    {
+        "id": 25,
+        "urlname": "https://demo.pycsw.org/gisdata/collections/metadata:main/queryables",
+        "parent_urls": [
+        "https://demo.pycsw.org/gisdata/collections?f=html"
+        ],
+        "status": "200 OK",
+        "result": "",
+        "info": "True",
+        "warning": "",
+        "deprecated": null
+    }
+```
+# OGC API - records
+OGC is in the process of adopting the [OGC API - Records](https://github.com/opengeospatial/ogcapi-records) specification. 
+A standardised API to interact with Catalogues. The specification includes a datamodel for metadata. 
+This tool assesses the linkage section of any record in an OGC API - Records.
 
-## OGC API - records
-
-OGC is in the process of adopting the [OGC API - Records](https://github.com/opengeospatial/ogcapi-records) specification. A standardised API to interact with Catalogues. The specification includes a datamodel for metadata. This tool assesses the linkage section of any record in an OGC API - Records.
-
+OGC services (WMS, WFS, WCS, CSW) often return an HTTP 500 error or a 400 Bad Request when called without the necessary parameters.
+This is because these services expect specific parameters to understand which operations to perform.
+A handling for this URL formats has been done in order to detect and include the necessary parameters before being checked 
+ 
 Set the endpoint to be analysed as 2 environment variables
 
 ```
@@ -35,30 +58,42 @@ export OGCAPI_URL=https://soilwise-he.containers.wur.nl/cat/
 export OGCAPI_COLLECTION=metadata:main
 ```
 
-## Source Code Brief Desrciption
+## Api Key Features
+1. **Link validation**: 
+Returns HTTP status codes for each link, along with other important information such as the parent URL, any warnings, and the date and time of the test.
+![Fast API link_status](./images/link_status.png)
+2. **Broken link categorization**:
+Identifies and categorizes broken links based on status codes, including Redirection Errors, Client Errors, and Server Errors.
+![Link categorization enpoint](./images/categorization.png)
+3. **Deprecated links identification**: 
+Flags links as deprecated if they have failed for X consecutive tests, in our case X equals to 10. 
+Deprecated links are excluded from future tests to optimize performance.
+![Fast API deprecated endpoint](./images/deprecated.png)
+4. **Timeout management**: 
+Allows the identification of URLs that exceed a timeout threshold which can be set manually as a parameter in linkchecker's properties.
+![Fast API timeout enpoint](./images/timeouts.png)
+5. **Availability monitoring**:
+When run periodically, the tool builds a history of availability for each URL, enabling users to view the status of links over time.
+![Link validation enpoint](./images/val_history.png)
 
-Running the linkchecker.py will utilize the requests library from python to get the relevant EJP Soil Catalogue source.
-Run the command below
-* python linkchecker.py
-The urls selected from the requests will passed to linkchecker using the proper options.
-The output generated will be written to a PostgreSQL database.
-A .env is required to define the database connection parameters.
-More specifically the following parameters must be specified
+## Container Deployment
 
-```
-    POSTGRES_HOST=
-    POSTGRES_PORT=
-    POSTGRES_DB=
-    POSTGRES_USER=
-    POSTGRES_PASSWORD=
-```
+Set environment variables in Dockerfile to enable database connection.
 
-## API
-The api.py file creates a FastAPI in order to retrieve links statuses. 
-Run the command below:
+Run the following command:
+
+The app can be deployed as a container. 
+A docker-compose file has been implemented.
+
+Run ***docker-compose up*** to run the container
+
+***Helpful commands***
+To run the FastAPI locally run 
 ```
 python -m uvicorn api:app --reload --host 0.0.0.0 --port 8000 
 ```
+The FastAPI service runs on: [http://127.0.0.1:8000/docs] only if ROOTPATH is not set
+
 To view the service of the FastAPI on [http://127.0.0.1:8000/docs]
 
 # Get current URL Status History 
@@ -91,25 +126,31 @@ You can set `ROOTPATH` env var to run the api at a path (default is at root)
 
 ```
 export ROOTPATH=/linky
-```
-
-## Docker
-
-A Docker instance must be running for the linkchecker command to work.
 
 ## CI/CD
-A workflow is provided in order to run it as a cronological job once per week every Sunday Midnight
-(However currently it is commemended to save running minutes since it takes about 80 minutes to complete)
-It is necessary to use the **secrets context in gitlab in order to be connected to database
+A CI/CD configuration file is provided in order to create an automated chronological pipeline.
+It is necessary to define the secrets context using GitLab secrets in order to connect to the database.
 
 ## Roadmap
-
 ### GeoHealthCheck integration
 
-[GeoHealthCheck](https://GeoHealthCheck.org) is a component to monitor livelyhood of typical OGC services (WMS, WFS, WCS, CSW). It is based on the [owslib](https://owslib.readthedocs.io/en/latest/) library, which provides a python implementation of various OGC services clients.
+[GeoHealthCheck](https://GeoHealthCheck.org) is a component to monitor livelyhood of typical OGC services (WMS, WFS, WCS, CSW). 
+It is based on the [owslib](https://owslib.readthedocs.io/en/latest/) library, which provides a python implementation of various OGC services clients.
 
+## Technological Stack
+
+1. **Core Language**:
+   - Python: Used for the linkchecker, API, and database interactions.
+
+2. **Database**:
+   - PostgreSQL: Utilized for storing and managing information.
+
+3. **Backend Framework**:
+   - FastAPI: Employed to create and expose REST API endpoints, utilizing its efficiency and auto-generated components like Swagger.
+
+4. **Containerization**:
+   - Docker: Used to containerize the linkchecker application, ensuring deployment and execution across different environments.
+  
 ## Soilwise-he project
-
-This work has been initiated as part of the [Soilwise-he project](https://soilwise-he.eu/).
+This work has been initiated as part of the Soilwise-he project. 
 The project receives funding from the European Union’s HORIZON Innovation Actions 2022 under grant agreement No. 101112838.
-
