@@ -1,3 +1,10 @@
+## [1.0.7](https://git.wur.nl/soilwise/link-liveliness-assessment/compare/1.0.6...1.0.7) (2024-08-21)
+
+
+### Bug Fixes
+
+* use local repo ([9965aba](https://git.wur.nl/soilwise/link-liveliness-assessment/commit/9965aba6ca0b6e6420bc9af41544ccbe9926c8c3))
+
 ## [1.0.6](https://git.wur.nl/soilwise/link-liveliness-assessment/compare/1.0.5...1.0.6) (2024-08-21)
 
 
