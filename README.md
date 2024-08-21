@@ -1,9 +1,10 @@
 # OGC API - Records; link liveliness assessment tool
 
-### Overview
-The linkchecker component is designed to evaluate the validity and accuracy of links within metadata records in the OGC API - Records System. 
+## Overview
 
-A component which evaluates for a set of metadata records (describing either data or knowledge sources), if:
+The linkchecker component is designed to evaluate the validity and accuracy of links within metadata records in the a [OGC API - Records](https://ogcapi.ogc.org/records/) based System. 
+
+A component which evaluates for a set of metadata records, if:
 
 - the links to external sources are valid
 - the links within the repository are valid
@@ -22,12 +23,13 @@ A link either points to:
 If endpoint is API, some sanity checks can be performed on the API:
 
 - Identify if the API adopted any API-standard
-- IF an API standard is adopted, does the API support basic operations of that API
+- If an API standard is adopted, does the API support basic operations of that API
   
-The benefit of latter is that it provides more information then a simple ping to the index page of the API, typical examples of standardised API's are SOAP, 
-GraphQL, SPARQL, OpenAPI, WMS, WFS
+The benefit of latter is that it provides more information then a simple ping to the index page of the API, typical examples of standardised API's are SOAP, GraphQL, SPARQL, OpenAPI, WMS, WFS
 
-***Sample response*** 
+The results of the validation can be extracted via an API. The API is based on the [fastapi framework](https://fastapi.tiangolo.com/) and can be deployed using a docker container.
+
+***Sample API response*** 
 ```
     {
         "id": 25,
@@ -42,7 +44,8 @@ GraphQL, SPARQL, OpenAPI, WMS, WFS
         "deprecated": null
     }
 ```
-# OGC API - records
+## OGC API - records
+
 OGC is in the process of adopting the [OGC API - Records](https://github.com/opengeospatial/ogcapi-records) specification. 
 A standardised API to interact with Catalogues. The specification includes a datamodel for metadata. 
 This tool assesses the linkage section of any record in an OGC API - Records.
@@ -58,7 +61,8 @@ export OGCAPI_URL=https://soilwise-he.containers.wur.nl/cat/
 export OGCAPI_COLLECTION=metadata:main
 ```
 
-## Api Key Features
+## Key Features
+
 1. **Link validation**: 
 Returns HTTP status codes for each link, along with other important information such as the parent URL, any warnings, and the date and time of the test.
 ![Fast API link_status](./images/link_status.png)
@@ -118,24 +122,18 @@ https://wikipedia.com and setting limit = 2 it will fetch the following result:
 
 This is the URL's history in descenting order in datetime
 
-# Docker
-
 ## Deploy `linky` at a path
 
 You can set `ROOTPATH` env var to run the api at a path (default is at root)
 
 ```
 export ROOTPATH=/linky
+```
 
 ## CI/CD
+
 A CI/CD configuration file is provided in order to create an automated chronological pipeline.
 It is necessary to define the secrets context using GitLab secrets in order to connect to the database.
-
-## Roadmap
-### GeoHealthCheck integration
-
-[GeoHealthCheck](https://GeoHealthCheck.org) is a component to monitor livelyhood of typical OGC services (WMS, WFS, WCS, CSW). 
-It is based on the [owslib](https://owslib.readthedocs.io/en/latest/) library, which provides a python implementation of various OGC services clients.
 
 ## Technological Stack
 
@@ -152,5 +150,6 @@ It is based on the [owslib](https://owslib.readthedocs.io/en/latest/) library, w
    - Docker: Used to containerize the linkchecker application, ensuring deployment and execution across different environments.
   
 ## Soilwise-he project
+
 This work has been initiated as part of the Soilwise-he project. 
 The project receives funding from the European Union’s HORIZON Innovation Actions 2022 under grant agreement No. 101112838.
