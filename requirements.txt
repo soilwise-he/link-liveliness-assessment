@@ -7,3 +7,4 @@ pandas
 asyncpg
 linkchecker
 databases
+python-dotenv
