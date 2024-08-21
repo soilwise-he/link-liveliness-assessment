@@ -34,21 +34,22 @@ logger = logging.getLogger(__name__)
 class StatusResponse(BaseModel):
     id: int 
     urlname: Optional[str]
-    parentname: Optional[str]
-    valid: Optional[str]
+    parent_urls: Optional[List[str]]
+    status: Optional[str]
+    result: Optional[str]
+    info: Optional[str]
     warning: Optional[str]
+    deprecated: Optional[bool] = None
 
 # Model to get the availability history of a specific url
 class URLAvailabilityResponse(BaseModel):
-    url: Optional[str]
-    perent_url: Optional[str]
-    validation_valid: Optional[str]
-    result: Optional[str]
-    warning: Optional[str]
-    lastChecked: Optional[datetime]
-    
-class DeprecatedUrlsResponse(BaseModel):
-    url: Optional[str]
+    urlname: Optional[str] = None
+    status: Optional[str] = None
+    result: Optional[str] = None
+    info: Optional[str] = None
+    warning: Optional[str] = None
+    validation_valid: Optional[str] = None
+    last_checked: datetime
         
 # Define status lists
 REDIRECTION_STATUSES = [
@@ -80,150 +81,195 @@ async def fetch_data(query: str, values: dict = {}):
     try:
         return await database.fetch_all(query=query, values=values)
     except asyncpg.exceptions.UndefinedTableError:
+        logging.error("The specified table does not exist", exc_info=True)
         raise HTTPException(status_code=500, detail="The specified table does not exist")
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Database query failed") from e
-
+        logging.error(f"Database query failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Database query failed")
+    
+# Endpoint to retrieve data with redirection statuses
 @app.get('/Redirection_URLs/3xx', response_model=List[StatusResponse])
 async def get_redirection_statuses():
-    query = "SELECT DISTINCT * FROM linkchecker_output WHERE valid = ANY(:statuses)"
+    query = """
+        SELECT 
+            l.id_link AS id, 
+            l.urlname, 
+            l.status,
+            l.warning,
+            l.result,
+            l.info,
+            array_remove(array_agg(DISTINCT p.parentname), NULL) AS parent_urls
+        FROM 
+            links l
+        LEFT JOIN 
+            parent p ON l.id_link = p.fk_link
+        WHERE 
+            l.status ILIKE ANY (:statuses)
+        GROUP BY
+            l.id_link, l.urlname, l.status, l.warning, result, info
+    """
     data = await fetch_data(query=query, values={'statuses': REDIRECTION_STATUSES})
     return data
 
 # Endpoint to retrieve data with client error statuses
 @app.get('/Client_Error_URLs/4xx', response_model=List[StatusResponse])
 async def get_client_error_statuses():
-    query = "SELECT DISTINCT * FROM linkchecker_output WHERE valid = ANY(:statuses)"
+    query = """
+        SELECT 
+            l.id_link AS id, 
+            l.urlname, 
+            l.status,
+            l.warning,
+            l.result,
+            l.info,
+            array_remove(array_agg(DISTINCT p.parentname), NULL) AS parent_urls
+        FROM 
+            links l
+        LEFT JOIN 
+            parent p ON l.id_link = p.fk_link
+        WHERE 
+            l.status ILIKE ANY (:statuses)
+        GROUP BY
+            l.id_link, l.urlname, l.status, l.warning, result, info
+    """
     data = await fetch_data(query=query, values={'statuses': CLIENT_ERROR_STATUSES})
     return data
 
 # Endpoint to retrieve data with server error statuses
 @app.get('/Server_Errors_URLs/5xx', response_model=List[StatusResponse])
 async def get_server_error_statuses():
-    query = "SELECT DISTINCT * FROM linkchecker_output WHERE valid = ANY(:statuses)"
+    query = """
+        SELECT 
+            l.id_link AS id, 
+            l.urlname, 
+            l.status,
+            l.warning,
+            l.result,
+            l.info,
+            array_remove(array_agg(DISTINCT p.parentname), NULL) AS parent_urls
+        FROM 
+            links l
+        LEFT JOIN 
+            parent p ON l.id_link = p.fk_link
+        WHERE 
+            l.status ILIKE ANY (:statuses)
+        GROUP BY
+            l.id_link, l.urlname, l.status, l.warning, result, info
+    """
     data = await fetch_data(query=query, values={'statuses': SERVER_ERROR_STATUSES})
-    return data
-
-# Endpoint to retrieve data where the warning column is not empty
-@app.get('/URLs_Which_Have_Warnings', response_model=List[StatusResponse])
-async def get_non_empty_warnings():
-    query = "SELECT DISTINCT * FROM linkchecker_output WHERE warning != ''"
-    data = await fetch_data(query=query)
     return data
 
 # Endpoint to retrieve data with client error statuses
 @app.get('/status/{item:path}', response_model=List[StatusResponse])
 async def get_status_for_url(item):
-    decoded_item = unquote(item)
-    query = "SELECT * FROM linkchecker_output WHERE urlname = :item"
-    data = await fetch_data(query=query, values={'item': decoded_item })
+    query = """
+        SELECT 
+            l.id_link AS id, 
+            l.urlname, 
+            l.status,
+            l.warning,
+            l.result,
+            l.info,
+            array_remove(array_agg(DISTINCT p.parentname), NULL) AS parent_urls
+        FROM 
+            links l
+        LEFT JOIN 
+            parent p ON l.id_link = p.fk_link
+        WHERE 
+            l.urlname = :item
+        GROUP BY
+            l.id_link, l.urlname, l.status, l.warning, result, info
+    """
+    data = await fetch_data(query=query, values={'item': item})
     return data
 
 # Endpoint to retrieve URLs that that timed out. Timeout is set to 5 seconds currently  
 @app.get('/Timeout_URLs', response_model=List[StatusResponse])
 async def get_timeout_urls():
     query = """
-        SELECT DISTINCT *
-        FROM linkchecker_output
-        WHERE valid LIKE '%ReadTimeout%' OR valid LIKE '%ConnectTimeout%'
+        SELECT 
+            l.id_link AS id, 
+            l.urlname, 
+            l.status,
+            l.warning,
+            l.result,
+            l.info,
+            array_remove(array_agg(DISTINCT p.parentname), NULL) AS parent_urls
+        FROM 
+            links l
+        LEFT JOIN 
+            parent p ON l.id_link = p.fk_link
+        WHERE 
+            l.status LIKE '%ReadTimeout%' OR l.status LIKE '%ConnectTimeout%'
+        GROUP BY
+            l.id_link, l.urlname, l.status, l.warning, result, info
     """
     data = await fetch_data(query=query)
     return data
 
-@app.get("/Single_url_status_history", response_model=List[URLAvailabilityResponse])
-async def get_current_url_status_history(
-        url: str = Query(..., description="URL to get avalability"),
-        limit: int = Query(100, ge=1, le=1000, description="Maximum number of results (default: 100, min: 1, max: 1000)")) -> List[URLAvailabilityResponse]:
+@app.get('/Deprecated URLs', response_model=List[StatusResponse])
+async def get_deprecated_urls():
     query = """
-    SELECT 
-        lo.urlname AS url, 
-        lo.parentname AS parent_url,
-        lo.result AS result,
-        lo.warning AS warning, 
-        vh.validation_result AS validation_valid, 
-        vh.timestamp AS last_checked
-    FROM 
-        linkchecker_output lo
-    JOIN (
         SELECT 
-            url, 
-            validation_result, 
-            timestamp,
-            ROW_NUMBER() OVER (PARTITION BY url ORDER BY timestamp DESC) as rn
+            l.id_link AS id, 
+            l.urlname, 
+            l.status,
+            l.warning,
+            l.result,
+            l.info,
+            l.deprecated,
+            array_remove(array_agg(DISTINCT p.parentname), NULL) AS parent_urls
         FROM 
-            validation_history
-    ) vh ON lo.urlname = vh.url AND vh.rn = 1
-    WHERE (lo.urlname = :url)
-    LIMIT :limit
+            links l
+        LEFT JOIN 
+            parent p ON l.id_link = p.fk_link
+        WHERE l.deprecated IS TRUE
+        GROUP BY
+            l.id_link, l.urlname, l.status, l.warning, result, info
+    """
+    data = await fetch_data(query=query)
+    return data
+
+@app.get("/URL_status_history", response_model=List[URLAvailabilityResponse])
+async def get_url_status_history(
+    url: str = Query(..., description="URL to get availability history"),
+    limit: int = Query(100, ge=1, le=1000, description="Maximum number of results (default: 100, min: 1, max: 1000)")
+) -> List[URLAvailabilityResponse]:
+    query = """
+        SELECT 
+            l.urlname,
+            l.status,
+            l.result,
+            l.info,
+            l.warning,
+            vh.validation_result AS validation_valid,
+            vh.timestamp AS last_checked,
+            array_agg(DISTINCT p.parentname) AS parent_urls
+        FROM 
+            links l
+        LEFT JOIN 
+            parent p ON l.id_link = p.fk_link
+        LEFT JOIN 
+            validation_history vh ON l.id_link = vh.fk_link
+        WHERE 
+            l.urlname = :url
+        GROUP BY
+            l.urlname, l.status, l.result, l.info, l.warning, vh.validation_result, vh.timestamp
+        ORDER BY 
+            vh.timestamp DESC
+        LIMIT :limit
     """
 
     try:
         results = await fetch_data(query=query, values={'url': url, 'limit': limit})
-        logger.info(f"Query returned {len(results)} results.")
+        logger.info(f"Query returned {len(results)} results for URL: {url}")
         
         response_data = [URLAvailabilityResponse(**dict(row)) for row in results]
         
         return response_data
     except Exception as e:
-        logger.error(f"Error occurred: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-    
-@app.get("/All_url_status_history", response_model=List[URLAvailabilityResponse])
-async def get_all_url_status_history(
-        limit: int = Query(100, ge=1, le=1000, description="Maximum number of results (default: 100, min: 1, max: 1000)")) -> List[URLAvailabilityResponse]:
-
-    query = """
-    SELECT
-        lo.urlname AS url, 
-        lo.parentname AS parent_url,
-        lo.result AS result,
-        lo.warning AS warning, 
-        vh.validation_result AS validation_valid, 
-        vh.timestamp AS last_checked
-    FROM 
-        linkchecker_output lo
-    JOIN (
-        SELECT 
-            url, 
-            validation_result, 
-            timestamp,
-            ROW_NUMBER() OVER (PARTITION BY url ORDER BY timestamp DESC) as rn
-        FROM 
-            validation_history
-    ) vh ON lo.urlname = vh.url AND vh.rn = 1
-    ORDER BY 
-        vh.timestamp DESC
-    LIMIT :limit
-    """
-
-    values = {"limit": limit}
-
-    try:
-        results = await fetch_data(query=query, values=values)
-        logging.info(f"Query returned {len(results)} results.")
-
-        response_data = [URLAvailabilityResponse(**row) for row in results]
-
-        return response_data
-    except Exception as e:
-        logging.error(f"Error occurred: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-    
-@app.get('/Deprecated URLs', response_model=List[DeprecatedUrlsResponse])
-async def get_deprecated_urls():
-    query = """
-    SELECT
-        us.url AS url
-    FROM 
-        url_status us
-    WHERE us.deprecated = TRUE
-    """
-    try:
-        data = await fetch_data(query=query)
-        return data
-    except Exception as e:
-        logging.error(f"Error occurred: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error occurred while fetching URL status history: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch URL status history")
 
 # Start the application
 @app.on_event('startup')

@@ -10,7 +10,7 @@ import re
 import os
 
 # When a URL reaches MAX_FAILURES consecutive failures it's marked
-# as deprecated and excluded from future checks
+# as deprecated and excluded from future insertions in database
 MAX_FAILURES = 10
 
 # Load environment variables from .env file
@@ -32,49 +32,48 @@ def setup_database():
         password=os.environ.get("POSTGRES_PASSWORD")
     )
     cur = conn.cursor()
+   
+    # Drop tables (only for development purposes)
+    # cur.execute("DROP TABLE IF EXISTS validation_history CASCADE")
+    # cur.execute("DROP TABLE IF EXISTS parent CASCADE")
+    # cur.execute("DROP TABLE IF EXISTS links CASCADE")
 
-    # Check if the table exists
-    cur.execute("SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name = 'linkchecker_output')")
-    table_exists = cur.fetchone()[0]
-
-    if table_exists:
-        # If the table exists, truncate it and reset the primary key sequence
-        cur.execute("TRUNCATE TABLE linkchecker_output RESTART IDENTITY")
-    else:
-        # If the table does not exist, create it
-        create_table_query = """
-        CREATE TABLE linkchecker_output (
-            id SERIAL PRIMARY KEY,
-            urlname TEXT,
-            parentname TEXT,
-            baseref TEXT,
-            valid TEXT,
-            result TEXT,
-            warning TEXT,
-            info TEXT,
-            url TEXT,
-            name TEXT
-        )
-        """
-        cur.execute(create_table_query)
-        
-    # Check if the validation_history table exists
-    cur.execute("SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name = 'validation_history')")
-    validation_history_table_exists = cur.fetchone()[0]
-    
-    if not validation_history_table_exists:
-        # Create the validation_history table if it doesn't exist
-        create_validation_history_table = """
-            CREATE TABLE validation_history (
-                id SERIAL PRIMARY KEY,
-                url TEXT NOT NULL,
-                validation_result TEXT NOT NULL,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """
-        cur.execute(create_validation_history_table)
-        
-    # Commit the changes
+    # Create or truncate linkchecker_output table
+    create_table_query = """
+    CREATE TABLE IF NOT EXISTS links (
+        id_link SERIAL PRIMARY KEY,
+        urlname TEXT UNIQUE,
+        status TEXT,
+        result TEXT,
+        info TEXT,
+        warning TEXT,
+        deprecated BOOLEAN DEFAULT FALSE,
+        consecutive_failures INTEGER DEFAULT 0
+    )
+    """
+    cur.execute(create_table_query)
+   
+    # Create validation_history table if it doesn't exist
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS parent (
+        id SERIAL PRIMARY KEY,
+        parentname TEXT NULL,
+        baseref TEXT NULL,
+        fk_link INTEGER REFERENCES links(id_link),
+        UNIQUE (parentname, baseref, fk_link)
+    )
+    """)
+   
+    # Create url_status table if it doesn't exist
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS validation_history (
+        id SERIAL PRIMARY KEY,
+        fk_link INTEGER REFERENCES links(id_link),
+        validation_result TEXT NOT NULL,
+        timestamp TIMESTAMP NOT NULL
+    )
+    """)
+   
     conn.commit()
     return conn, cur
 
@@ -89,7 +88,7 @@ def get_pagination_info(url):
     number_matched = data.get('numberMatched', 0)
     number_returned = data.get('numberReturned', 0)
 
-    # Calculate total pages 
+    # Calculate total pages
     total_pages = math.ceil(number_matched / number_returned)
     return total_pages, number_returned
   except requests.exceptions.RequestException as e:
@@ -138,6 +137,73 @@ def run_linkchecker(urls):
             yield line.decode('utf-8').strip()  # Decode bytes to string and strip newline characters
         # Wait for the process to finish
         process.wait()
+       
+def insert_or_update_link(conn, urlname, status, result, info, warning, is_valid):
+    
+    with conn.cursor() as cur:
+        # Get current status
+        cur.execute("SELECT id_link, consecutive_failures, deprecated FROM links WHERE urlname = %s", (urlname,))
+        existing_link = cur.fetchone()    
+       
+        if existing_link:
+            link_id, consecutive_failures, deprecated = existing_link
+
+            if existing_link[2]:
+                # Ignore deprecated URL's
+                # Deprecated URL's are these urls that consecutive have failed for MAX_FAILURES times
+                return None
+            
+            if not is_valid:
+                consecutive_failures += 1
+            else:
+                consecutive_failures = 0
+            
+            deprecated = deprecated or (consecutive_failures >= MAX_FAILURES)
+        
+            # Updade existing link
+            cur.execute("""
+                UPDATE links SET
+                    status = %s,
+                    result = %s,
+                    info = %s,
+                    warning = %s,
+                    deprecated = %s,
+                    consecutive_failures = %s
+                WHERE id_link = %s
+            """,(status, result, info, warning, deprecated, consecutive_failures, link_id))
+        else:
+            # Insert new link (not deprecated on the first insertion)
+            cur.execute("""
+                INSERT INTO links (urlname, status, result, info, warning, deprecated, consecutive_failures)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                RETURNING id_link
+            """, (urlname, status, result, info, warning, False, 0 if is_valid else 1))
+        
+            link_id = cur.fetchone()[0]
+        
+        # Insert new record in validation history
+        cur.execute("""
+            INSERT INTO validation_history(fk_link, validation_result, timestamp)
+            VALUES(%s, %s, CURRENT_TIMESTAMP)
+        """,(link_id, status))
+        conn.commit()
+       
+        return link_id
+
+def insert_parent(conn, parentname, baseref, link_id):
+    with conn.cursor() as cur:
+        # Convert empty strings to None
+        parentname = parentname if parentname else None
+        baseref = baseref if baseref else None
+
+        cur.execute("""
+            INSERT INTO parent (parentname, baseref, fk_link)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (parentname, baseref, fk_link) DO NOTHING
+        """, (parentname, baseref, link_id))  
+       
+        # Commit the transaction
+        conn.commit()
 
 def insert_validation_history(conn, url, validation_result):
     with conn.cursor() as cur:
@@ -146,15 +212,34 @@ def insert_validation_history(conn, url, validation_result):
             (url, validation_result)
         )
     conn.commit()
+           
+def is_valid_status(valid_string):
+    # Return if status is valid or not
+    parts = valid_string.split()
+    if parts[0].isdigit():
+        if 200 <= int(parts[0]) < 400: # Valid HTTP status codes range
+            return True
+    return False
+   
+def get_active_urls(conn):
+    with conn.cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM validation_history")
+        count = cur.fetchone()[0]
+       
+        if count == 0:
+            return None # The table is empty
+        else:
+            cur.execute("SELECT url FROM validation_history WHERE NOT deprecated")
+            return [row[0] for row in cur.fetchall()]
 
 def main():
     start_time = time.time()  # Start timing
     # Set up the database and create the table
     print("Setting PostgreSQL db")
     conn, cur = setup_database()
-    
-    print("Time started processing links.")
-    print("Loading EJP SOIL Catalogue links...")
+   
+    print('Time started processing links.')
+    print(f'Loading {catalogue_json_url} links...')
     total_pages, numbers_returned = get_pagination_info(catalogue_json_url)
 
     # Base URL
@@ -169,48 +254,37 @@ def main():
     for url in urls:
         extracted_links = extract_links(url)
         all_links.update(extracted_links)  # Add new links to the set of all links
-    
+   
     # Define the formats to be removed
     formats_to_remove = [
         'collections/' + collection + '/items?offset',
         '?f=json'
     ]
-    
-    # Get the list of active (non-deprecated) URLs
-    all_known_urls = get_all_urls(conn)
-
-    if all_known_urls is None:
-        # First run on empty table, check all links
-        links_to_check = all_links
-    else:
-        # Check all known links plus any new links
-        links_to_check = set(all_known_urls) | all_links
-            
+           
     # Specify the fields to include in the CSV file
-    fields_to_include = ['urlname', 'parentname', 'baseref', 'valid', 'result', 'warning', 'info', 'url', 'name']
+    fields_to_include = ['urlname', 'parentname', 'baseref', 'valid', 'result', 'warning', 'info']
 
     print("Checking Links...")
     # Run LinkChecker and process the output
-    for line in run_linkchecker(links_to_check):
+    for line in run_linkchecker(all_links):
         if re.match(r'^http', line):
             # Remove trailing semicolon and split by semicolon
             values = line.rstrip(';').split(';')
-            filtered_values = [values[field] if field < len(values) else "" for field in range(len(fields_to_include))]
-            
-            is_valid = False
-            if is_valid_status(filtered_values[3]):
-                is_valid = True
-            # Insert the data into the PostgreSQL table for each link
-            insert_query = """
-                INSERT INTO linkchecker_output
-                (urlname, parentname, baseref, valid, result, warning, info, url, name)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """
-            cur.execute(insert_query, filtered_values)
-            conn.commit()
-            
-            insert_validation_history(conn, filtered_values[0], filtered_values[3])
-    
+           
+            # Filter and pad values based on fields_to_include
+            filtered_values = [str(values[i]) if i < len(values) else "" for i in range(len(fields_to_include))]
+           
+            # Destructure filtered_values
+            urlname, parentname, baseref, valid, result, warning, info = filtered_values
+
+            is_valid = is_valid_status(valid)
+
+            link_id = insert_or_update_link(conn, urlname, valid, result, info, warning, is_valid)
+
+            # Insert parent information
+            insert_parent(conn, parentname, baseref, link_id)
+
+    # conn.commit()
     print("LinkChecker output written to PostgreSQL database")
 
     # Close the connection and cursor
@@ -218,9 +292,8 @@ def main():
     conn.close()
 
     end_time = time.time()
-    elapsed_time = end_time - start_time
+    elapsed_time = end_time - start_time 
     print(f"Time elapsed: {elapsed_time:.2f} seconds")
  
 if __name__ == "__main__":
     main()
-
