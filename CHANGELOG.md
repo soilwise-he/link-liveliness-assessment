@@ -1,3 +1,10 @@
+## [1.0.5](https://git.wur.nl/soilwise/link-liveliness-assessment/compare/1.0.4...1.0.5) (2024-08-21)
+
+
+### Bug Fixes
+
+* history management ([2d60dbf](https://git.wur.nl/soilwise/link-liveliness-assessment/commit/2d60dbfba9a026d80abd6b0ee6efcb4e9eb50a96))
+
 ## [1.0.4](https://git.wur.nl/soilwise/link-liveliness-assessment/compare/1.0.3...1.0.4) (2024-06-14)
 
 
