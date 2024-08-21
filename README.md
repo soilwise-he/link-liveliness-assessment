@@ -44,22 +44,7 @@ The results of the validation can be extracted via an API. The API is based on t
         "deprecated": null
     }
 ```
-## OGC API - records
 
-OGC is in the process of adopting the [OGC API - Records](https://github.com/opengeospatial/ogcapi-records) specification. 
-A standardised API to interact with Catalogues. The specification includes a datamodel for metadata. 
-This tool assesses the linkage section of any record in an OGC API - Records.
-
-OGC services (WMS, WFS, WCS, CSW) often return an HTTP 500 error or a 400 Bad Request when called without the necessary parameters.
-This is because these services expect specific parameters to understand which operations to perform.
-A handling for this URL formats has been done in order to detect and include the necessary parameters before being checked 
- 
-Set the endpoint to be analysed as 2 environment variables
-
-```
-export OGCAPI_URL=https://soilwise-he.containers.wur.nl/cat/
-export OGCAPI_COLLECTION=metadata:main
-```
 
 ## Key Features
 
@@ -79,6 +64,45 @@ Allows the identification of URLs that exceed a timeout threshold which can be s
 5. **Availability monitoring**:
 When run periodically, the tool builds a history of availability for each URL, enabling users to view the status of links over time.
 ![Link validation enpoint](./images/val_history.png)
+6. **OWS services** (WMS, WFS, WCS, CSW) typically return a HTTP 500 error when called without the necessary parameters. A handling for these services has been applied in order to detect and include the necessary parameters before being checked. 
+
+
+## Run validation locally
+
+A database connection needs to be set up. You can configure the database connection in a .env file (or set environment variables).
+
+```
+OGCAPI_URL=https://example.com
+OGCAPI_COLLECTION=example
+POSTGRES_HOST=example.com
+POSTGRES_PORT=5432
+POSTGRES_DB=postgres
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=******
+```
+
+Install requirements
+
+```
+pip3 install -r requirements.txt
+```
+
+Run the validation
+
+```
+python3 linkchecker.py 
+```
+
+## Run API locally
+
+To run the FastAPI locally run 
+
+```
+python3 -m uvicorn api:app --reload --host 0.0.0.0 --port 8000 
+```
+The FastAPI service runs on: [http://127.0.0.1:8000/docs]
+
+To view the service of the FastAPI on [http://127.0.0.1:8000/docs]
 
 ## Container Deployment
 
@@ -91,18 +115,23 @@ A docker-compose file has been implemented.
 
 Run ***docker-compose up*** to run the container
 
-***Helpful commands***
-To run the FastAPI locally run 
-```
-python -m uvicorn api:app --reload --host 0.0.0.0 --port 8000 
-```
-The FastAPI service runs on: [http://127.0.0.1:8000/docs] only if ROOTPATH is not set
+## Deploy `linky` at a path
 
-To view the service of the FastAPI on [http://127.0.0.1:8000/docs]
+You can set `ROOTPATH` env var to run the api at a path (default is at root)
 
-# Get current URL Status History 
+```
+export ROOTPATH=/linky
+```
+
+## CI/CD
+
+A CI/CD configuration file is provided in order to create an automated chronological pipeline.
+It is necessary to define the secrets context using GitLab secrets in order to connect to the database.
+
+## Get current URL Status History 
+
 This endpoint returns the history of a specific URL. 
-Let say we have the status of a specific URL over time 
+Let's say we have the status of a specific URL over time 
 
 | id  | url                    | validation_result | timestamp               |
 |-----|------------------------|-------------------|-------------------------|
@@ -122,18 +151,6 @@ https://wikipedia.com and setting limit = 2 it will fetch the following result:
 
 This is the URL's history in descenting order in datetime
 
-## Deploy `linky` at a path
-
-You can set `ROOTPATH` env var to run the api at a path (default is at root)
-
-```
-export ROOTPATH=/linky
-```
-
-## CI/CD
-
-A CI/CD configuration file is provided in order to create an automated chronological pipeline.
-It is necessary to define the secrets context using GitLab secrets in order to connect to the database.
 
 ## Technological Stack
 
@@ -148,7 +165,20 @@ It is necessary to define the secrets context using GitLab secrets in order to c
 
 4. **Containerization**:
    - Docker: Used to containerize the linkchecker application, ensuring deployment and execution across different environments.
-  
+
+## About OGC API - records
+
+OGC is in the process of adopting the [OGC API - Records](https://github.com/opengeospatial/ogcapi-records) specification. 
+A standardised API to interact with Catalogues. The specification includes a datamodel for metadata. 
+This tool assesses the linkage section of any record in an OGC API - Records.
+ 
+Set the endpoint to be analysed as 2 environment variables
+
+```
+export OGCAPI_URL=https://soilwise-he.containers.wur.nl/cat/
+export OGCAPI_COLLECTION=metadata:main
+```
+
 ## Soilwise-he project
 
 This work has been initiated as part of the Soilwise-he project. 
