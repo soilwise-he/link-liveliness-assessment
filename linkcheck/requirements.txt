@@ -1,0 +1,6 @@
+requests
+beautifulsoup4
+asyncpg
+linkchecker
+databases
+python-dotenv
