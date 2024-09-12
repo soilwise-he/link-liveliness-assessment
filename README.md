@@ -1,3 +1,7 @@
+# isric instance
+
+- forked from https://github.com/soilwise-he/link-liveliness-assessment
+
 # OGC API - Records; link liveliness assessment tool
 
 ## Overview
