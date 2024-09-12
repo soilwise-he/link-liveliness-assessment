@@ -65,4 +65,4 @@ Link-check-dev:
   rules:
     - if: $PROJECT != "LINKCHECK"
       when: never
-    - if: $CI_COMMIT_BRANCH == "dev"
+    - if: $CI_COMMIT_BRANCH == "isric2"
