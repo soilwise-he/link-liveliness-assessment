@@ -137,6 +137,7 @@ def check_single_url(url):
     return stdout.decode('utf-8').strip().split('\n')
 
 def run_linkchecker(url):
+    print(f'check {url}')
     # Run LinkChecker Docker command with specified user and group IDs for each URL
     process = subprocess.Popen([
         "linkchecker",
