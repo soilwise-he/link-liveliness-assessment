@@ -19,7 +19,7 @@ tag:
     - semantic-release
   when: on_success
   only:
-    - isric2
+    - dev
   except:
     refs:
       - tags
@@ -65,7 +65,7 @@ Link-check-dev:
   rules:
     - if: $PROJECT != "LINKCHECK"
       when: never
-    - if: $CI_COMMIT_BRANCH == "isric2"
+    - if: $CI_COMMIT_BRANCH == "dev"
 
 Link-check-prod:
   image: harbor.containers.wurnet.nl/proxy-cache/library/python:3.10.8-slim-buster
