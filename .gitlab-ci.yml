@@ -53,6 +53,7 @@ build:
 Link-check-dev:
   image: harbor.containers.wurnet.nl/proxy-cache/library/python:3.10.8-slim-buster
   stage: run-harvest
+  timeout: 4 hours
   script:
     - export POSTGRES_HOST=$POSTGRES_HOST_TEST
     - export POSTGRES_PORT=$POSTGRES_PORT_TEST
@@ -70,6 +71,7 @@ Link-check-dev:
 Link-check-prod:
   image: harbor.containers.wurnet.nl/proxy-cache/library/python:3.10.8-slim-buster
   stage: run-harvest
+  timeout: 4 hours
   script:
     - export POSTGRES_HOST=$POSTGRES_HOST_TEST
     - export POSTGRES_PORT=$POSTGRES_PORT_TEST
