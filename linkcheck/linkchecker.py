@@ -161,29 +161,27 @@ def insert_or_update_link(conn, url_result):
         conn.commit()
         return link_id if not deprecated else None
 
+def process_item(item, relevant_links):
+    if isinstance(item, dict):
+        if 'href' in item and 'rel' not in item:
+            relevant_links.add(item['href'])
+        elif 'href' in item and item.get('rel') not in ['self', 'collection']:
+            relevant_links.add(item['href'])
+        
+        for value in item.values():
+            process_item(value, relevant_links)
+    elif isinstance(item, list):
+        for element in item:
+            process_item(element, relevant_links)
+
 def extract_relevant_links_from_json(json_url):
     try:
         response = requests.get(json_url)
         response.raise_for_status()
         data = response.json()
         relevant_links = set()
-       
-        def process_item(item):
-            if isinstance(item, dict):
-                if 'href' in item and 'rel' not in item:
-                    relevant_links.add(item['href'])
-                    # print(f"  - Found direct href link: {item['href']}")
-                elif 'href' in item and item.get('rel') not in ['self', 'collection']:
-                    relevant_links.add(item['href'])
-                    # print(f"  - Found relevant link: {item['href']}")
-               
-                for value in item.values():
-                    process_item(value)
-            elif isinstance(item, list):
-                for element in item:
-                    process_item(element)
-
-        process_item(data)
+        
+        process_item(data, relevant_links)
         return relevant_links
     except Exception as e:
         # print(f"Error extracting links from JSON at {json_url}: {e}")
@@ -204,11 +202,7 @@ def main():
     conn, cur = setup_database()
     url_checker = URLChecker()
 
-    # base_url = 'https://catalogue.ejpsoil.eu/collections/metadata:main/items?offset='
-    # catalogue_json_url = 'https://catalogue.ejpsoil.eu/collections/metadata:main/items?f=json'
     base_url = base + 'collections/' + collection + '/items?offset='
-
-
     total_pages, items_per_page = get_pagination_info(catalogue_json_url)
 
     # Generate URLs for each page
