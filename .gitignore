@@ -1,2 +1,7 @@
 __pycache__/
 .env
+/bin/
+/include/
+/lib/
+/pyvenv.cfg
+/share/
