@@ -5,3 +5,4 @@ asyncpg
 linkchecker
 databases
 python-dotenv
+lxml
