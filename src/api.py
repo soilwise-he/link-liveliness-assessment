@@ -29,7 +29,6 @@ app = FastAPI(
 )
 logger = logging.getLogger(__name__)
 
-
 # Define response model
 class StatusResponse(BaseModel):
     id: int 

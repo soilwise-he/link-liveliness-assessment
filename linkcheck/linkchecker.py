@@ -211,7 +211,6 @@ def main():
    
     # Process catalogue page
     for page in range(total_pages):
-        # page_url = f"{base_url}{page * items_per_page}&f=html"
         print(f"Processing page {page + 1} of {total_pages}")
 
         extracted_links = extract_links(f"{base_url}{page * items_per_page}&f=html")
