@@ -163,39 +163,37 @@ def insert_or_update_link(conn, url_result):
 
 def process_item(item, relevant_links):
     if isinstance(item, dict):
-        if 'href' in item and 'rel' not in item:
-            relevant_links.add(item['href'])
-        elif 'href' in item and item.get('rel') not in ['self', 'collection']:
-            relevant_links.add(item['href'])
-        
-        for value in item.values():
-            process_item(value, relevant_links)
+        if 'href' in item and item['href'].startswith('http') and not item['href'].startswith(base):
+            if item.get('rel','') not in ['self', 'collection']:
+                # print('Add link ' + item['href'])
+                # todo: special behaviour for OGC links
+                relevant_links.add(item['href'])
     elif isinstance(item, list):
         for element in item:
             process_item(element, relevant_links)
 
 def extract_relevant_links_from_json(json_url):
     try:
-        response = requests.get(json_url)
+        response = requests.get(json_url,headers={'accept':'application/json'})
         response.raise_for_status()
         data = response.json()
         relevant_links = set()
-        
-        process_item(data, relevant_links)
+        for f in data.get('features',{}):
+            process_item(f.get('links',[]), relevant_links)
         return relevant_links
     except Exception as e:
         # print(f"Error extracting links from JSON at {json_url}: {e}")
         return set()
 
-def extract_links(url):
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
-        tree = html.fromstring(response.content)
-        return tree.xpath('//a/@href')
-    except Exception as e:
-        print(f"Error extracting links from {url}: {e}")
-        return []
+# def extract_links(url):
+#     try:
+#         response = requests.get(url)
+#         response.raise_for_status()
+#         tree = html.fromstring(response.content)
+#         return tree.xpath('//a/@href')
+#     except Exception as e:
+#         print(f"Error extracting links from {url}: {e}")
+#         return []
 
 def main():
     start_time = time.time()
@@ -211,15 +209,11 @@ def main():
    
     # Process catalogue page
     for page in range(total_pages):
-        print(f"Processing page {page + 1} of {total_pages}")
-
-        extracted_links = extract_links(f"{base_url}{page * items_per_page}&f=html")
-       
-        for link in extracted_links:
-            json_url = f"{link}?f=json" if "?f=json" not in link else link
-            relevant_links = extract_relevant_links_from_json(json_url)
-            all_relevant_links.update(relevant_links)
-
+        print(f"Processing page {page + 1} of {total_pages} at {time.time()-start_time}")
+        for l in extract_relevant_links_from_json(f"{base_url}{page * items_per_page}"):
+            if l not in all_relevant_links:
+                all_relevant_links.add(l)
+        
     print(f"Found {len(all_relevant_links)} unique links to check")
    
     # Check all URLs concurrently
