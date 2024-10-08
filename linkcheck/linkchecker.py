@@ -15,6 +15,7 @@ import os
 
 MAX_FAILURES = 10 # Used to mark deprecated url's
 TIMEOUT = 5  # Url timeout
+USERAGENT = 'Soilwise Link Liveliness assessment v0.1.0' # Send as user-agent with every request
 MAX_WORKERS = 5  # Threads used for url checking
 
 # Load environment variables from .env file
@@ -33,8 +34,9 @@ class URLChecker:
 
     def check_url(self, url):
         try:
-            response = requests.head(url, timeout=self.timeout, allow_redirects=True)
-           
+            
+            response = requests.head(url, timeout=self.timeout, allow_redirects=True, headers={'User-Agent':USERAGENT})
+            print(f'\x1b[36m Success: \x1b[0m {url}')
             return {
                 'url': url,
                 'status_code': response.status_code,
@@ -42,6 +44,7 @@ class URLChecker:
                 'valid': 200 <= response.status_code < 400
             }
         except requests.RequestException as e:
+            print(f'\x1b[31;20m Failed: \x1b[0m {url}')
             return {
                 'url': url,
                 'error': str(e),
@@ -100,7 +103,7 @@ def setup_database():
 def get_pagination_info(url):
   try:
     # Fetch catalogue JSON
-    response = requests.get(url)
+    response = requests.get(url, headers={'Accept':'application/json','User-Agent':USERAGENT})
     response.raise_for_status()  # Raise exception for HHTP errors
     data = response.json()
 
@@ -174,7 +177,7 @@ def process_item(item, relevant_links):
 
 def extract_relevant_links_from_json(json_url):
     try:
-        response = requests.get(json_url,headers={'accept':'application/json'})
+        response = requests.get(json_url,headers={'Accept':'application/json','User-Agent':USERAGENT})
         response.raise_for_status()
         data = response.json()
         relevant_links = set()
@@ -184,16 +187,6 @@ def extract_relevant_links_from_json(json_url):
     except Exception as e:
         # print(f"Error extracting links from JSON at {json_url}: {e}")
         return set()
-
-# def extract_links(url):
-#     try:
-#         response = requests.get(url)
-#         response.raise_for_status()
-#         tree = html.fromstring(response.content)
-#         return tree.xpath('//a/@href')
-#     except Exception as e:
-#         print(f"Error extracting links from {url}: {e}")
-#         return []
 
 def main():
     start_time = time.time()
