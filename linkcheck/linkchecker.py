@@ -21,6 +21,8 @@ MAX_WORKERS = 5  # Threads used for url checking
 # Load environment variables from .env file
 load_dotenv()
 
+STOREINDB = os.environ.get("STOREINDB") or True
+
 # base catalog
 base = os.environ.get("OGCAPI_URL") or "https://demo.pycsw.org/gisdata"
 collection = os.environ.get("OGCAPI_COLLECTION") or "metadata:main"
@@ -36,7 +38,7 @@ class URLChecker:
         try:
             
             response = requests.head(url, timeout=self.timeout, allow_redirects=True, headers={'User-Agent':USERAGENT})
-            print(f'\x1b[36m Success: \x1b[0m {url}')
+            print(f'\x1b[36m Success: \x1b[0m {url} in record {url}')
             return {
                 'url': url,
                 'status_code': response.status_code,
@@ -44,7 +46,7 @@ class URLChecker:
                 'valid': 200 <= response.status_code < 400
             }
         except requests.RequestException as e:
-            print(f'\x1b[31;20m Failed: \x1b[0m {url}')
+            print(f'\x1b[31;20m Failed: \x1b[0m {url} in record {url}')
             return {
                 'url': url,
                 'error': str(e),
@@ -190,7 +192,8 @@ def extract_relevant_links_from_json(json_url):
 
 def main():
     start_time = time.time()
-    conn, cur = setup_database()
+    if STOREINDB == True:
+        conn, cur = setup_database()
     url_checker = URLChecker()
 
     base_url = base + 'collections/' + collection + '/items?offset='
@@ -214,28 +217,31 @@ def main():
     results = url_checker.check_urls(all_relevant_links)
    
     # Process results
-    print(f"Update database...")
-    processed_links = 0
-    for result in results:
-        if insert_or_update_link(conn, result) is not None:
-            processed_links += 1
-   
-    cur.execute("""
-        SELECT
-            COUNT(*) as total_checks,
-            SUM(CASE WHEN status_code BETWEEN 200 AND 399 THEN 1 ELSE 0 END) as successful_checks
-        FROM validation_history
-    """)
-    total_checks, successful_checks = cur.fetchone()
+    if STOREINDB == True:
+        print(f"Update database...")
+        processed_links = 0
+        for result in results:
+            if insert_or_update_link(conn, result) is not None:
+                processed_links += 1
+    
+        cur.execute("""
+            SELECT
+                COUNT(*) as total_checks,
+                SUM(CASE WHEN status_code BETWEEN 200 AND 399 THEN 1 ELSE 0 END) as successful_checks
+            FROM validation_history
+        """)
+        total_checks, successful_checks = cur.fetchone()
 
     end_time = time.time()
     print("\nSummary:")
     print(f"Time elapsed: {end_time - start_time:.2f} seconds")
-    print(f"Total checks performed: {total_checks}")
-    print(f"Successful checks: {successful_checks}")
+    
+    if STOREINDB == True:
+        print(f"Total checks performed: {total_checks}")
+        print(f"Successful checks: {successful_checks}")
 
-    # Close the database connection
-    cur.close()
-    conn.close()
+        # Close the database connection
+        cur.close()
+        conn.close()
 if __name__ == "__main__":
     main()
