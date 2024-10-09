@@ -187,7 +187,7 @@ def insert_or_update_link(conn, url_result):
         """, (urlname, 0 if url_result['valid'] else 1, url_result['valid'], url_result['valid'], MAX_FAILURES))
        
         link_id, deprecated = cur.fetchone()
-       
+
         if not deprecated:
             # Insert validation history
             cur.execute("""
