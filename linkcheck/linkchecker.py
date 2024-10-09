@@ -33,12 +33,56 @@ catalogue_json_url= f"{base}/collections/{collection}/items?f=json"
 class URLChecker:
     def __init__(self, timeout=TIMEOUT):
         self.timeout = timeout
+        self.ogc_patterns = {
+            'WMS': '/wms',
+            'WFS': '/wfs',
+            'WCS': '/wcs',
+            'CSW': '/csw'
+        }
 
+    def process_ogc_url(self, url):
+        parsed_url = urlparse(url)
+        query_params = parse_qs(parsed_url.query)
+       
+        # Check if URL is an OGC service
+        service_type = None
+        for service, pattern in self.ogc_patterns.items():
+            if pattern in parsed_url.path.lower():
+                service_type = service
+                break
+       
+        if not service_type and 'service' in query_params:
+            service_type = query_params['service'][0].upper()
+
+        # If this is an OGC URL and it doesn't already have a request parameter,
+        # only then modify it
+        if service_type and 'request' not in query_params:
+            # Keep all existing parameters
+            new_params = query_params.copy()
+           
+            # Add GetCapabilities parameters only if they don't exist
+            if 'request' not in new_params:
+                new_params['request'] = ['GetCapabilities']
+            if 'service' not in new_params:
+                new_params['service'] = [service_type]
+           
+            # Construct new URL
+            new_query = urlencode(new_params, doseq=True)
+            print("New url",parsed_url._replace(query=new_query).geturl())
+            return parsed_url._replace(query=new_query).geturl()
+       
+        return url
+    
     def check_url(self, url):
         try:
+
+            # Process url if an ogc service
+            processed_url = self.process_ogc_url(url)
+
+            response = requests.head(processed_url, timeout=self.timeout, allow_redirects=True, headers={'User-Agent':USERAGENT})
             
-            response = requests.head(url, timeout=self.timeout, allow_redirects=True, headers={'User-Agent':USERAGENT})
-            print(f'\x1b[36m Success: \x1b[0m {url} in record {url}')
+            print(f'\x1b[36m Success: \x1b[0m {url}')
+
             return {
                 'url': url,
                 'status_code': response.status_code,
@@ -46,7 +90,9 @@ class URLChecker:
                 'valid': 200 <= response.status_code < 400
             }
         except requests.RequestException as e:
+
             print(f'\x1b[31;20m Failed: \x1b[0m {url} in record {url}')
+
             return {
                 'url': url,
                 'error': str(e),
@@ -147,7 +193,7 @@ def insert_or_update_link(conn, url_result):
         """, (urlname, 0 if url_result['valid'] else 1, url_result['valid'], url_result['valid'], MAX_FAILURES))
        
         link_id, deprecated = cur.fetchone()
-       
+
         if not deprecated:
             # Insert validation history
             cur.execute("""
@@ -170,8 +216,7 @@ def process_item(item, relevant_links):
     if isinstance(item, dict):
         if 'href' in item and item['href'].startswith('http') and not item['href'].startswith(base):
             if item.get('rel','') not in ['self', 'collection']:
-                # print('Add link ' + item['href'])
-                # todo: special behaviour for OGC links
+
                 relevant_links.add(item['href'])
     elif isinstance(item, list):
         for element in item:
