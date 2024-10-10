@@ -37,7 +37,8 @@ class URLChecker:
             'WMS': '/wms',
             'WFS': '/wfs',
             'WCS': '/wcs',
-            'CSW': '/csw'
+            'CSW': '/csw',
+            'WMS': '/ows'
         }
 
     def process_ogc_url(self, url):
@@ -51,27 +52,30 @@ class URLChecker:
                 service_type = service
                 break
        
+        
         if not service_type and 'service' in query_params:
             service_type = query_params['service'][0].upper()
+        elif not service_type:
+            return url
 
-        # If this is an OGC URL and it doesn't already have a request parameter,
-        # only then modify it
-        if service_type and 'request' not in query_params:
-            # Keep all existing parameters
-            new_params = query_params.copy()
-           
-            # Add GetCapabilities parameters only if they don't exist
-            if 'request' not in new_params:
-                new_params['request'] = ['GetCapabilities']
-            if 'service' not in new_params:
-                new_params['service'] = [service_type]
-           
-            # Construct new URL
-            new_query = urlencode(new_params, doseq=True)
-            # print("New url",parsed_url._replace(query=new_query).geturl())
-            return parsed_url._replace(query=new_query).geturl()
-       
-        return url
+        # If this is an OGC URL then fire a getcapabilities request and set service type
+        # Keep all other existing parameters
+        new_params = query_params.copy()
+        
+        owsparams = "width,height,bbox,version,crs,layers,format,srs,count,typenames,srsName,outputFormat"
+
+        for p in owsparams.split(',')+owsparams.upper().split(','):
+            if p in new_params:
+                del new_params[p]
+
+        # Add GetCapabilities parameters only if they don't exist
+        new_params['request'] = ['GetCapabilities']
+        new_params['service'] = [service_type]
+        
+        # Construct new URL
+        new_query = urlencode(new_params, doseq=True)
+        # print("New url",parsed_url._replace(query=new_query).geturl())
+        return parsed_url._replace(query=new_query).geturl()
     
     def check_url(self, url):
         try:
@@ -80,7 +84,7 @@ class URLChecker:
 
             response = requests.head(processed_url, timeout=self.timeout, allow_redirects=True, headers={'User-Agent':USERAGENT})
 
-            print(f'\x1b[36m Success: \x1b[0m {processed_url}')
+            print(f'\x1b[36m Success: \x1b[0m {url}')
             return {
                 'url': url,
                 'status_code': response.status_code,
@@ -88,7 +92,7 @@ class URLChecker:
                 'valid': 200 <= response.status_code < 400
             }
         except requests.RequestException as e:
-            print(f'\x1b[31;20m Failed: \x1b[0m {processed_url} in record {url}')
+            print(f'\x1b[31;20m Failed: \x1b[0m {url}')
             return {
                 'url': url,
                 'error': str(e),
