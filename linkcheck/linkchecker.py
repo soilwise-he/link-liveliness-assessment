@@ -66,7 +66,7 @@ class URLChecker:
            
             # Construct new URL
             new_query = urlencode(new_params, doseq=True)
-            print("New url",parsed_url._replace(query=new_query).geturl())
+            # print("New url",parsed_url._replace(query=new_query).geturl())
             return parsed_url._replace(query=new_query).geturl()
        
         return url
@@ -78,7 +78,7 @@ class URLChecker:
 
             response = requests.head(processed_url, timeout=self.timeout, allow_redirects=True, headers={'User-Agent':USERAGENT})
             
-            print(f'\x1b[36m Success: \x1b[0m {url}')
+            print(f'\x1b[36m Success: \x1b[0m {processed_url}')
             return {
                 'url': url,
                 'status_code': response.status_code,
@@ -86,7 +86,7 @@ class URLChecker:
                 'valid': 200 <= response.status_code < 400
             }
         except requests.RequestException as e:
-            print(f'\x1b[31;20m Failed: \x1b[0m {url}')
+            print(f'\x1b[31;20m Failed: \x1b[0m {processed_url}')
             return {
                 'url': url,
                 'error': str(e),
