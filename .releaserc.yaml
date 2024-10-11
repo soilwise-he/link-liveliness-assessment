@@ -1,6 +1,6 @@
 plugins:
   - "@semantic-release/gitlab"
-branches: ['dev']
+branches: ['main']
 ci: true
 debug: true
 dryRun: false
