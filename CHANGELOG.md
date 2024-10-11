@@ -1,3 +1,16 @@
+## [1.1.0](https://git.wur.nl/soilwise/link-liveliness-assessment/compare/1.0.7...1.1.0) (2024-10-11)
+
+
+### Bug Fixes
+
+* do a deploy ([7bb4d32](https://git.wur.nl/soilwise/link-liveliness-assessment/commit/7bb4d3295738137e103ab4320bf9cf26d14407d0))
+* update db ([047fc1e](https://git.wur.nl/soilwise/link-liveliness-assessment/commit/047fc1e9d30b74b37c7777d06904663945413a01))
+
+
+### Features
+
+* refactore lla ([90424a7](https://git.wur.nl/soilwise/link-liveliness-assessment/commit/90424a77fdc8e7eed6b6ddf28ace1d53ee685b90))
+
 ## [1.0.7](https://git.wur.nl/soilwise/link-liveliness-assessment/compare/1.0.6...1.0.7) (2024-08-21)
 
 
