@@ -19,7 +19,7 @@ tag:
     - semantic-release
   when: on_success
   only:
-    - dev
+    - main
   except:
     refs:
       - tags
