@@ -33,56 +33,18 @@ catalogue_json_url= f"{base}/collections/{collection}/items?f=json"
 class URLChecker:
     def __init__(self, timeout=TIMEOUT):
         self.timeout = timeout
-        self.ogc_patterns = {
-            'WMS': '/wms',
-            'WFS': '/wfs',
-            'WCS': '/wcs',
-            'CSW': '/csw',
-            'WMS': '/ows'
-        }
 
-    def process_ogc_url(self, url):
-        parsed_url = urlparse(url)
-        query_params = parse_qs(parsed_url.query)
-       
-        # Check if URL is an OGC service
-        service_type = None
-        for service, pattern in self.ogc_patterns.items():
-            if pattern in parsed_url.path.lower():
-                service_type = service
-                break
-       
-        
-        if not service_type and 'service' in query_params:
-            service_type = query_params['service'][0].upper()
-        elif not service_type:
-            return url
-
-        # If this is an OGC URL then fire a getcapabilities request and set service type
-        # Keep all other existing parameters
-        new_params = query_params.copy()
-        
-        owsparams = "width,height,bbox,version,crs,layers,format,srs,count,typenames,srsName,outputFormat"
-
-        for p in owsparams.split(',')+owsparams.upper().split(','):
-            if p in new_params:
-                del new_params[p]
-
-        # Add GetCapabilities parameters only if they don't exist
-        new_params['request'] = ['GetCapabilities']
-        new_params['service'] = [service_type]
-        
-        # Construct new URL
-        new_query = urlencode(new_params, doseq=True)
-        # print("New url",parsed_url._replace(query=new_query).geturl())
-        return parsed_url._replace(query=new_query).geturl()
-    
     def check_url(self, url):
         try:
-            # Process url if an ogc service
-            processed_url = self.process_ogc_url(url)
-
-            response = requests.head(processed_url, timeout=self.timeout, allow_redirects=True, headers={'User-Agent':USERAGENT})
+            response = requests.head(url, timeout=self.timeout,
+                                    allow_redirects=True,
+                                    headers={'User-Agent': USERAGENT})
+           
+            # If head request fails, try GET request
+            if response.status_code >= 400:
+                response = requests.get(url, timeout=self.timeout,
+                                       allow_redirects=True,
+                                       headers={'User-Agent': USERAGENT})
 
             print(f'\x1b[36m Success: \x1b[0m {url}')
             return {
@@ -214,13 +176,46 @@ def insert_or_update_link(conn, url_result):
 
 def process_item(item, relevant_links):
     if isinstance(item, dict):
-        if 'href' in item and item['href'].startswith('http') and not item['href'].startswith(base):
-            if item.get('rel','') not in ['self', 'collection']:
-
-                relevant_links.add(item['href'])
+        # Process all URLs in the item
+        for value in item.values():
+            if isinstance(value, str) and value.startswith('http') and not item['href'].startswith(base):
+                process_url(value, relevant_links)
+            elif isinstance(value, list):
+                process_item(value, relevant_links)
     elif isinstance(item, list):
         for element in item:
             process_item(element, relevant_links)
+
+
+def process_url(url, relevant_links):
+    ogc_services = ['wms', 'wfs', 'wcs', 'csw']
+   
+    # Check if it's an OGC service and determine the service type
+    service_type = next((s for s in ogc_services if s in url.lower()), None)
+   
+    if service_type:
+		query_params = parse_qs(url.query)
+
+        # If this is an OGC URL then fire a getcapabilities request and set service type
+        # Keep all other existing parameters
+        new_params = query_params.copy()
+        
+        owsparams = "width,height,bbox,version,crs,layers,format,srs,count,typenames,srsName,outputFormat"
+
+        for p in owsparams.split(',')+owsparams.upper().split(','):
+            if p in new_params:
+                del new_params[p]
+
+        # Add GetCapabilities parameters only if they don't exist
+        new_params['request'] = ['GetCapabilities']
+        new_params['service'] = [service_type]
+        
+        # Construct new URL
+        new_query = urlencode(new_params, doseq=True)
+        # print("New url",parsed_url._replace(query=new_query).geturl())
+        relevant_links.add(parsed_url._replace(query=new_query).geturl())
+    elif all(term not in url.lower() for term in ['rel', 'collection', 'self']):
+        relevant_links.add(url)
 
 def extract_relevant_links_from_json(json_url):
     try:
@@ -254,7 +249,7 @@ def main():
         for l in extract_relevant_links_from_json(f"{base_url}{page * items_per_page}"):
             if l not in all_relevant_links:
                 all_relevant_links.add(l)
-        
+
     print(f"Found {len(all_relevant_links)} unique links to check")
    
     # Check all URLs concurrently
@@ -263,30 +258,31 @@ def main():
    
     # Process results
     if STOREINDB == True:
-        print(f"Update database...")
-        processed_links = 0
-        for result in results:
-            if insert_or_update_link(conn, result) is not None:
-                processed_links += 1
-    
-        cur.execute("""
-            SELECT
-                COUNT(*) as total_checks,
-                SUM(CASE WHEN status_code BETWEEN 200 AND 399 THEN 1 ELSE 0 END) as successful_checks
-            FROM validation_history
-        """)
-        total_checks, successful_checks = cur.fetchone()
+	    print(f"Update database...")
+	    processed_links = 0
+	    for result in results:
+	        if insert_or_update_link(conn, result) is not None:
+	            processed_links += 1
+	   
+	    cur.execute("""
+	        SELECT
+	            COUNT(*) as total_checks,
+	            SUM(CASE WHEN status_code BETWEEN 200 AND 399 THEN 1 ELSE 0 END) as successful_checks
+	        FROM validation_history
+	    """)
+	    total_checks, successful_checks = cur.fetchone()
 
     end_time = time.time()
     print("\nSummary:")
     print(f"Time elapsed: {end_time - start_time:.2f} seconds")
-    
+
     if STOREINDB == True:
         print(f"Total checks performed: {total_checks}")
-        print(f"Successful checks: {successful_checks}")
+	    print(f"Successful checks: {successful_checks}")
 
-        # Close the database connection
-        cur.close()
-        conn.close()
+	    # Close the database connection
+	    cur.close()
+	    conn.close()
+
 if __name__ == "__main__":
     main()
