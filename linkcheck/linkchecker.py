@@ -175,26 +175,21 @@ def insert_or_update_link(conn, url_result):
         return link_id if not deprecated else None
 
 def process_item(item, relevant_links):
-    if isinstance(item, dict):
-        # Process all URLs in the item
-        for value in item.values():
-            if isinstance(value, str) and value.startswith('http') and not item['href'].startswith(base):
-                process_url(value, relevant_links)
-            elif isinstance(value, list):
-                process_item(value, relevant_links)
-    elif isinstance(item, list):
-        for element in item:
-            process_item(element, relevant_links)
-
+    if isinstance(item, dict) and 'href' in item and item['href'] not in [None,''] and item['href'].startswith('http') and not item['href'].startswith(base) :
+        if 'rel' in item and item['rel'] not in [None,''] and item['rel'].lower() in ['collection', 'self', 'root', 'prev', 'next', 'canonical']:
+            None
+        else:
+            process_url(item['href'], relevant_links)
 
 def process_url(url, relevant_links):
     ogc_services = ['wms', 'wfs', 'wcs', 'csw']
-   
+
     # Check if it's an OGC service and determine the service type
     service_type = next((s for s in ogc_services if s in url.lower()), None)
-   
-    if service_type:
-        query_params = parse_qs(url.query)
+
+    if service_type: 
+        u = urlparse(url)
+        query_params = parse_qs(u.query)
 
         # If this is an OGC URL then fire a getcapabilities request and set service type
         # Keep all other existing parameters
@@ -213,8 +208,8 @@ def process_url(url, relevant_links):
         # Construct new URL
         new_query = urlencode(new_params, doseq=True)
         # print("New url",parsed_url._replace(query=new_query).geturl())
-        relevant_links.add(url._replace(query=new_query).geturl())
-    elif all(term not in url.lower() for term in ['rel', 'collection', 'self']):
+        relevant_links.add(u._replace(query=new_query).geturl())
+    else:
         relevant_links.add(url)
 
 def extract_relevant_links_from_json(json_url):
@@ -224,10 +219,11 @@ def extract_relevant_links_from_json(json_url):
         data = response.json()
         relevant_links = set()
         for f in data.get('features',{}):
-            process_item(f.get('links',[]), relevant_links)
+            for i in f.get('links',[]):
+                process_item(i, relevant_links)
         return relevant_links
     except Exception as e:
-        # print(f"Error extracting links from JSON at {json_url}: {e}")
+        print(f"Error extracting links from JSON at {json_url}: {e}")
         return set()
 
 def main():
