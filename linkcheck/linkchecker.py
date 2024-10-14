@@ -182,12 +182,14 @@ def process_item(item, relevant_links):
             process_url(item['href'], relevant_links)
 
 def process_url(url, relevant_links):
-    ogc_services = ['wms', 'wfs', 'wcs', 'csw']
+    ogc_services = ['wms', 'wmts', 'wfs', 'wcs', 'csw', 'ows']
 
     # Check if it's an OGC service and determine the service type
     service_type = next((s for s in ogc_services if s in url.lower()), None)
 
     if service_type: 
+        if service_type == 'ows':
+            service_type = 'wms'
         u = urlparse(url)
         query_params = parse_qs(u.query)
 
@@ -195,15 +197,15 @@ def process_url(url, relevant_links):
         # Keep all other existing parameters
         new_params = query_params.copy()
         
-        owsparams = "width,height,bbox,version,crs,layers,format,srs,count,typenames,srsName,outputFormat"
+        owsparams = "width,height,bbox,version,crs,layers,format,srs,count,typenames,srsname,outputformat,service,request"
 
-        for p in owsparams.split(',')+owsparams.upper().split(','):
-            if p in new_params:
-                del new_params[p]
+        for p2 in query_params.keys():
+            if p2.lower() in owsparams.split(','):
+                del new_params[p2]
 
         # Add GetCapabilities parameters only if they don't exist
         new_params['request'] = ['GetCapabilities']
-        new_params['service'] = [service_type]
+        new_params['service'] = [service_type.upper()]
         
         # Construct new URL
         new_query = urlencode(new_params, doseq=True)
