@@ -31,53 +31,19 @@ catalogue_json_url= f"{base}/collections/{collection}/items?f=json"
 class URLChecker:
     def __init__(self, timeout=TIMEOUT):
         self.timeout = timeout
-        self.ogc_patterns = {
-            'WMS': '/wms',
-            'WFS': '/wfs',
-            'WCS': '/wcs',
-            'CSW': '/csw'
-        }
 
-    def process_ogc_url(self, url):
-        parsed_url = urlparse(url)
-        query_params = parse_qs(parsed_url.query)
-       
-        # Check if URL is an OGC service
-        service_type = None
-        for service, pattern in self.ogc_patterns.items():
-            if pattern in parsed_url.path.lower():
-                service_type = service
-                break
-       
-        if not service_type and 'service' in query_params:
-            service_type = query_params['service'][0].upper()
-
-        # If this is an OGC URL and it doesn't already have a request parameter,
-        # only then modify it
-        if service_type and 'request' not in query_params:
-            # Keep all existing parameters
-            new_params = query_params.copy()
-           
-            # Add GetCapabilities parameters only if they don't exist
-            if 'request' not in new_params:
-                new_params['request'] = ['GetCapabilities']
-            if 'service' not in new_params:
-                new_params['service'] = [service_type]
-           
-            # Construct new URL
-            new_query = urlencode(new_params, doseq=True)
-            print("New url",parsed_url._replace(query=new_query).geturl())
-            return parsed_url._replace(query=new_query).geturl()
-       
-        return url
-    
     def check_url(self, url):
         try:
-            # Process url if an ogc service
-            processed_url = self.process_ogc_url(url)
-
-            response = requests.head(processed_url, timeout=self.timeout, allow_redirects=True, headers={'User-Agent':USERAGENT})
-            
+            response = requests.head(url, timeout=self.timeout,
+                                    allow_redirects=True,
+                                    headers={'User-Agent': USERAGENT})
+           
+            # If head request fails, try GET request
+            if response.status_code >= 400:
+                response = requests.get(url, timeout=self.timeout,
+                                       allow_redirects=True,
+                                       headers={'User-Agent': USERAGENT})
+           
             print(f'\x1b[36m Success: \x1b[0m {url}')
             return {
                 'url': url,
@@ -208,12 +174,35 @@ def insert_or_update_link(conn, url_result):
 
 def process_item(item, relevant_links):
     if isinstance(item, dict):
-        if 'href' in item and item['href'].startswith('http') and not item['href'].startswith(base):
-            if item.get('rel','') not in ['self', 'collection']:
-                relevant_links.add(item['href'])
+        # Process all URLs in the item
+        for value in item.values():
+            if isinstance(value, str) and value.startswith('http'):
+                process_url(value, relevant_links)
+            elif isinstance(value, list):
+                process_item(value, relevant_links)
     elif isinstance(item, list):
         for element in item:
             process_item(element, relevant_links)
+
+def process_url(url, relevant_links):
+    ogc_services = ['wms', 'wfs', 'wcs', 'csw']
+   
+    # Check if it's an OGC service and determine the service type
+    service_type = next((s for s in ogc_services if s in url.lower()), None)
+   
+    if service_type:       
+        # Check if 'request=' is not in the URL
+        if 'request=' not in url.lower():
+            # Add either '&' or '?' based on the URL's current state
+            if url.endswith('?'):
+                url += f"request=GetCapabilities&service={service_type.upper()}"
+            else:
+                separator = '&' if '?' in url else '?'
+                url += f"{separator}request=GetCapabilities&service={service_type.upper()}"
+                      
+        relevant_links.add(url)
+    elif all(term not in url.lower() for term in ['rel', 'collection', 'self']):
+        relevant_links.add(url)
 
 def extract_relevant_links_from_json(json_url):
     try:
@@ -246,7 +235,7 @@ def main():
         for l in extract_relevant_links_from_json(f"{base_url}{page * items_per_page}"):
             if l not in all_relevant_links:
                 all_relevant_links.add(l)
-        
+       
     print(f"Found {len(all_relevant_links)} unique links to check")
    
     # Check all URLs concurrently
