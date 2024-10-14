@@ -194,7 +194,7 @@ def process_url(url, relevant_links):
     service_type = next((s for s in ogc_services if s in url.lower()), None)
    
     if service_type:
-		query_params = parse_qs(url.query)
+        query_params = parse_qs(url.query)
 
         # If this is an OGC URL then fire a getcapabilities request and set service type
         # Keep all other existing parameters
@@ -213,7 +213,7 @@ def process_url(url, relevant_links):
         # Construct new URL
         new_query = urlencode(new_params, doseq=True)
         # print("New url",parsed_url._replace(query=new_query).geturl())
-        relevant_links.add(parsed_url._replace(query=new_query).geturl())
+        relevant_links.add(url._replace(query=new_query).geturl())
     elif all(term not in url.lower() for term in ['rel', 'collection', 'self']):
         relevant_links.add(url)
 
@@ -258,19 +258,19 @@ def main():
    
     # Process results
     if STOREINDB == True:
-	    print(f"Update database...")
-	    processed_links = 0
-	    for result in results:
-	        if insert_or_update_link(conn, result) is not None:
-	            processed_links += 1
-	   
-	    cur.execute("""
-	        SELECT
-	            COUNT(*) as total_checks,
-	            SUM(CASE WHEN status_code BETWEEN 200 AND 399 THEN 1 ELSE 0 END) as successful_checks
-	        FROM validation_history
-	    """)
-	    total_checks, successful_checks = cur.fetchone()
+        print(f"Update database...")
+        processed_links = 0
+        for result in results:
+            if insert_or_update_link(conn, result) is not None:
+                processed_links += 1
+       
+        cur.execute("""
+            SELECT
+                COUNT(*) as total_checks,
+                SUM(CASE WHEN status_code BETWEEN 200 AND 399 THEN 1 ELSE 0 END) as successful_checks
+            FROM validation_history
+        """)
+        total_checks, successful_checks = cur.fetchone()
 
     end_time = time.time()
     print("\nSummary:")
@@ -278,11 +278,11 @@ def main():
 
     if STOREINDB == True:
         print(f"Total checks performed: {total_checks}")
-	    print(f"Successful checks: {successful_checks}")
+        print(f"Successful checks: {successful_checks}")
 
-	    # Close the database connection
-	    cur.close()
-	    conn.close()
+        # Close the database connection
+        cur.close()
+        conn.close()
 
 if __name__ == "__main__":
     main()
