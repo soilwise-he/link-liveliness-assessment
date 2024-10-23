@@ -30,6 +30,8 @@ collection = os.environ.get("OGCAPI_COLLECTION") or "metadata:main"
 # format catalogue path with f-string
 catalogue_json_url= f"{base}/collections/{collection}/items?f=json"
 
+catalogue_domain = f"{base}/collections/{collection}/items/"
+
 class URLChecker:
     def __init__(self, timeout=TIMEOUT):
         self.timeout = timeout
@@ -79,15 +81,23 @@ def setup_database():
     cur = conn.cursor()
    
     # Drop existing tables
+    cur.execute("DROP TABLE IF EXISTS records CASCADE")
     cur.execute("DROP TABLE IF EXISTS links CASCADE")
     cur.execute("DROP TABLE IF EXISTS validation_history CASCADE")
 
     # Create tables
     tables = [
         """
+        CREATE TABLE IF NOT EXISTS records (
+            id SERIAL PRIMARY KEY,
+            record_id TEXT UNIQUE
+        )
+        """,
+        """ 
         CREATE TABLE IF NOT EXISTS links (
             id_link SERIAL PRIMARY KEY,
             urlname TEXT UNIQUE,
+            fk_record INTEGER REFERENCES records(id),
             deprecated BOOLEAN DEFAULT FALSE,
             consecutive_failures INTEGER DEFAULT 0
         )
@@ -131,14 +141,31 @@ def get_pagination_info(url):
     print(f"Error calculating total pages from JSON data: {e}")
     return None
  
-def insert_or_update_link(conn, url_result):
+def insert_or_update_link(conn, url_result, record_id):
     with conn.cursor() as cur:
         urlname = url_result['url']
        
+        if record_id:
+            cur.execute("""
+                INSERT INTO records (record_id)
+                VALUES (%s || %s)
+                ON CONFLICT (record_id) DO NOTHING
+                RETURNING id
+            """, (catalogue_domain, record_id,))
+            record_result = cur.fetchone()
+            
+            if record_result:
+                record_db_id = record_result[0]
+            else:
+                cur.execute("SELECT id FROM records WHERE record_id = %s", (catalogue_domain + record_id,))
+                record_db_id = cur.fetchone()[0]
+        else:
+            record_db_id = None
+            
         # Get or create link
         cur.execute("""
-            INSERT INTO links (urlname, consecutive_failures)
-            VALUES (%s, %s)
+            INSERT INTO links (urlname, fk_record, consecutive_failures)
+            VALUES (%s, %s, %s)
             ON CONFLICT (urlname) DO UPDATE
             SET consecutive_failures =
                 CASE
@@ -152,7 +179,7 @@ def insert_or_update_link(conn, url_result):
                         ELSE links.deprecated
                     END
             RETURNING id_link, deprecated
-        """, (urlname, 0 if url_result['valid'] else 1, url_result['valid'], url_result['valid'], MAX_FAILURES))
+        """, (urlname, record_db_id, 0 if url_result['valid'] else 1, url_result['valid'], url_result['valid'], MAX_FAILURES))
        
         link_id, deprecated = cur.fetchone()
 
@@ -216,52 +243,76 @@ def process_url(url, relevant_links):
 
 def extract_relevant_links_from_json(json_url):
     try:
-        response = requests.get(json_url,headers={'Accept':'application/json','User-Agent':USERAGENT})
+        response = requests.get(json_url, headers={'Accept':'application/json','User-Agent':USERAGENT})
         response.raise_for_status()
         data = response.json()
-        relevant_links = set()
-        for f in data.get('features',{}):
-            for i in f.get('links',[]):
-                process_item(i, relevant_links)
-        return relevant_links
+        links_map = {}  # Dictionary to store URL:record_id pairs
+
+        # Handle features array
+        features = data.get('features', [])
+        if features:
+            for feature in features:
+                # Get the record ID for this feature
+                record_id = feature.get('id')
+                if record_id:
+                    # Create a temporary set to store links for this feature
+                    feature_links = set()
+                    # Process links array if it exists
+                    for link in feature.get('links', []):
+                        process_item(link, feature_links)
+                    # Add all links from this feature to the map with their record ID
+                    for link in feature_links:
+                        links_map[link] = record_id
+                
+        return links_map
     except Exception as e:
         print(f"Error extracting links from JSON at {json_url}: {e}")
-        return set()
+        return {}
+
+def process_item(item, relevant_links):
+    if isinstance(item, dict) and 'href' in item and item['href'] not in [None, '', 'null']:
+        # Make sure href is actually a URL
+        if item['href'].startswith('http'):
+            if 'rel' in item and item['rel'] not in [None,''] and item['rel'].lower() in ['collection', 'self', 'root', 'prev', 'next', 'canonical']:
+                None
+            else:
+                process_url(item['href'], relevant_links)
 
 def main():
     start_time = time.time()
-    if STOREINDB == True:
+    if STOREINDB:
         conn, cur = setup_database()
     url_checker = URLChecker()
-
-    base_url = base + 'collections/' + collection + '/items?offset='
+    
+    base_url = 'https://catalogue.ejpsoil.eu/collections/metadata:main/items?offset='
+    catalogue_json_url = 'https://catalogue.ejpsoil.eu/collections/metadata:main/items?f=json'
+    
     total_pages, items_per_page = get_pagination_info(catalogue_json_url)
 
-    # Generate URLs for each page
     print('Extracting links from catalogue...')
-    all_relevant_links = set()
-   
-    # Process catalogue page
+    url_record_map = {}  # Master dictionary to store URL to record_id mapping
+
+    # Process catalogue pages
     for page in range(total_pages):
         print(f"Processing page {page + 1} of {total_pages} at {time.time()-start_time}")
-        for l in extract_relevant_links_from_json(f"{base_url}{page * items_per_page}"):
-            if l not in all_relevant_links:
-                all_relevant_links.add(l)
+        page_url_map = extract_relevant_links_from_json(f"{base_url}{page * items_per_page}")
+        url_record_map.update(page_url_map)
 
-    print(f"Found {len(all_relevant_links)} unique links to check")
-   
+    print(f"Found {len(url_record_map)} unique links to check")
+    
     # Check all URLs concurrently
-    # print("Checking URLs...")
-    results = url_checker.check_urls(all_relevant_links)
-   
+    results = url_checker.check_urls(url_record_map.keys())
+    
     # Process results
-    if STOREINDB == True:
-        print(f"Update database...")
+    if STOREINDB:
+        # print(f"Update database...")
         processed_links = 0
         for result in results:
-            if insert_or_update_link(conn, result) is not None:
+            # Get the record_id for this URL
+            record_id = url_record_map[result['url']]
+            if insert_or_update_link(conn, result, record_id) is not None:
                 processed_links += 1
-       
+            
         cur.execute("""
             SELECT
                 COUNT(*) as total_checks,
