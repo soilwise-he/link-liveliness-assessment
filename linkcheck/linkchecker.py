@@ -29,8 +29,7 @@ collection = os.environ.get("OGCAPI_COLLECTION") or "metadata:main"
 
 # format catalogue path with f-string
 catalogue_json_url= f"{base}/collections/{collection}/items?f=json"
-
-catalogue_domain = f"{base}/collections/{collection}/items/"
+catalogue_domain= f"{base}/collections/{collection}/items/"
 
 class URLChecker:
     def __init__(self, timeout=TIMEOUT):
@@ -248,7 +247,6 @@ def extract_relevant_links_from_json(json_url):
         data = response.json()
         links_map = {}  # Dictionary to store URL:record_id pairs
 
-        # Handle features array
         features = data.get('features', [])
         if features:
             for feature in features:
@@ -257,7 +255,7 @@ def extract_relevant_links_from_json(json_url):
                 if record_id:
                     # Create a temporary set to store links for this feature
                     feature_links = set()
-                    # Process links array if it exists
+                    # Process links array
                     for link in feature.get('links', []):
                         process_item(link, feature_links)
                     # Add all links from this feature to the map with their record ID
@@ -271,7 +269,6 @@ def extract_relevant_links_from_json(json_url):
 
 def process_item(item, relevant_links):
     if isinstance(item, dict) and 'href' in item and item['href'] not in [None, '', 'null']:
-        # Make sure href is actually a URL
         if item['href'].startswith('http'):
             if 'rel' in item and item['rel'] not in [None,''] and item['rel'].lower() in ['collection', 'self', 'root', 'prev', 'next', 'canonical']:
                 None
@@ -284,13 +281,11 @@ def main():
         conn, cur = setup_database()
     url_checker = URLChecker()
     
-    base_url = 'https://catalogue.ejpsoil.eu/collections/metadata:main/items?offset='
-    catalogue_json_url = 'https://catalogue.ejpsoil.eu/collections/metadata:main/items?f=json'
-    
+    base_url = base + 'collections/' + collection + '/items?offset='
     total_pages, items_per_page = get_pagination_info(catalogue_json_url)
 
     print('Extracting links from catalogue...')
-    url_record_map = {}  # Master dictionary to store URL to record_id mapping
+    url_record_map = {}  # Dictionary to store URL to record_id mapping
 
     # Process catalogue pages
     for page in range(total_pages):
