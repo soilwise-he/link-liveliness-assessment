@@ -4,31 +4,37 @@
 
 ### Component Overview and Scope
 
-The linkchecker component is designed to evaluate the validity and accuracy of links within metadata records in the a [OGC API - Records](https://ogcapi.ogc.org/records/) based System.
+The linkchecker component is designed to evaluate the validity and availability of links within metadata records advertised via a [OGC API - Records](https://ogcapi.ogc.org/records/) API.
 
 A link in metadata record either points to:
 -	another metadata record
--	a downloadable instance (pdf/zip/sqlite) of the resource
--	an API
+-	a downloadable instance (pdf/zip/sqlite/mp4/pptx) of the resource
+   - the resource itself
+   - documentation about the resource
+   - identifier of the resource (DOI)	   
+-	a webservice or API (sparql, openapi, graphql, ogc-api)
 
 Linkchecker evaluates for a set of metadata records, if:
 -	the links to external sources are valid
 -	the links within the repository are valid
--	link metadata represents accurately the resource
+-	link metadata represents accurately the resource (mime type, size, data model, access constraints)
 
 If endpoint is API, some sanity checks can be performed on the API:
 -	Identify if the API adopted any API-standard
 -	If an API standard is adopted, does the API support basic operations of that API
+-	Does the metadata correctly mention the standard
 
 The component returns a http status: `200 OK`, `401 Non Authorized`, `404 Not Found`, `500 Server Error` and timestamp.
 The component runs an evaluation for a single resource at request, or runs tests at intervals providing a history of availability.
 The results of the evaluation can be extracted via an API. The API is based on the fastapi framework and can be deployed using a docker container.
 
+Evaluation process runs as a scheduled CI-CD pipeline in Gitlab. It uses 5 treads to increase performance. 
+
 ### Users
 1. **all data users** (authorised + unauthorised)
-   - can see the results of link evaluation in the Catalogue (if XX is integrated)
+   - can see the results of link evaluation in the Catalogue (if XX is integrated) or access the API directly to retrieve reports
 2. **administrators**
-   - can manually start the evaluation process
+   - can configure and manually start the evaluation process
    - can see the history of link evaluations
 
 ### References
@@ -84,7 +90,23 @@ Link Liveliness Assessment internal flow - TBD
 
 ### Database Design
 
-TBD
+```mermaid
+classDiagram
+    Links <|-- history
+    Links : +int ID
+    Links : +String Urlname
+    Links : +String deprecated
+    Links : +String Consecutive_failures
+    class history{
+      +int ID
+      +String fk_Link
+      +String Statuscode
+     +String isRedirect
+     +String Errormessage
+     +String Redirect
+    }
+
+```
 
 ### Integrations & Interfaces
 -	Visualisation of evaluation in Metadata Catalogue
