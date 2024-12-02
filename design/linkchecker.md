@@ -42,9 +42,15 @@ Evaluation process runs as a scheduled CI-CD pipeline in Gitlab. It uses 5 tread
 -	[fastapi framework](https://fastapi.tiangolo.com/)
 
 ## Requirements
-TBD
+
 ### Functional Requirements
+
+Users want to understand the availability of a resource before they click a link. It helps them to understand if a click will be (un)successfull. The availability can be indicated as `not available` (404), `sometimes available` (in %), `authorisation required`, `deprecated` (too many times not available), 'unknown' (due to timeouts or other failures).
+
 ### Non-functional Requirements
+
+- Should respect rules in robots.txt
+- Should not introduce vulnerabilities
 
 ## Architecture
 
@@ -118,7 +124,12 @@ classDiagram
 
 ### Key Architectural Decisions
 
-TBD
+Initially we started with [linkchecker](https://pypi.org/project/LinkChecker/) library, but performance was really slow, because it tested the same links for each page again and again.
+We decided to only test the links section of ogc-api:records, it means that links within for example metadata abstract are no longer tested.
+OGC OWS services are a substantial portion of links, these services return error 500, if called without parameters. For this scenario we created a dedicated script.
+If tests for a resource fail a number of times, the resource is no longer tested, and the resource tagged as `deprecated`.
+Links via a facade, such as DOI, are followed to the page they are referring to. It means the lla tool can understand the relation between DOI and the page it refers to.
+For each link it is known on which record(s) it is mentioned, so if a broken link occurs, we can find a contact to notify in the record.
 
 ## Risks & Limitations
 
