@@ -92,24 +92,29 @@ Link Liveliness Assessment internal flow - TBD
 
 ```mermaid
 classDiagram
-    Links <|-- history
-    Links : +int ID
+    Links <|-- Validation_history
+    Links <|-- Record
+    Links : +Int ID
+    Links : +Int fk_record
     Links : +String Urlname
     Links : +String deprecated
     Links : +String Consecutive_failures
-    class history{
-      +int ID
-      +String fk_Link
+    class Record{
+    +Int ID
+    +String Record
+    }
+    class Validation_history{
+      +Int ID
+      +Int fk_link
       +String Statuscode
      +String isRedirect
      +String Errormessage
      +String Redirect
     }
-
 ```
 
 ### Integrations & Interfaces
--	Visualisation of evaluation in Metadata Catalogue
+-	Visualisation of evaluation in Metadata Catalogue, the assessment report is retrieved using ajax from the each record page
 
 ### Key Architectural Decisions
 
