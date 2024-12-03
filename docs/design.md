@@ -7,19 +7,22 @@
 The linkchecker component is designed to evaluate the validity and availability of links within metadata records advertised via a [OGC API - Records](https://ogcapi.ogc.org/records/) API.
 
 A link in metadata record either points to:
+
 -	another metadata record
 -	a downloadable instance (pdf/zip/sqlite/mp4/pptx) of the resource
-   - the resource itself
-   - documentation about the resource
-   - identifier of the resource (DOI)	   
+    - the resource itself
+    - documentation about the resource
+    - identifier of the resource (DOI)	   
 -	a webservice or API (sparql, openapi, graphql, ogc-api)
 
 Linkchecker evaluates for a set of metadata records, if:
+
 -	the links to external sources are valid
 -	the links within the repository are valid
 -	link metadata represents accurately the resource (mime type, size, data model, access constraints)
 
 If endpoint is API, some sanity checks can be performed on the API:
+
 -	Identify if the API adopted any API-standard
 -	If an API standard is adopted, does the API support basic operations of that API
 -	Does the metadata correctly mention the standard
@@ -32,10 +35,10 @@ Evaluation process runs as a scheduled CI-CD pipeline in Gitlab. It uses 5 tread
 
 ### Users
 1. **all data users** (authorised + unauthorised)
-   - can see the results of link evaluation in the Catalogue (if XX is integrated) or access the API directly to retrieve reports
+    - can see the results of link evaluation in the Catalogue (if XX is integrated) or access the API directly to retrieve reports
 2. **administrators**
-   - can configure and manually start the evaluation process
-   - can see the history of link evaluations
+    - can configure and manually start the evaluation process
+    - can see the history of link evaluations
 
 ### References
 -	[OGC API - Records](https://ogcapi.ogc.org/records/)
@@ -58,19 +61,19 @@ Users want to understand the availability of a resource before they click a link
 ### Technological Stack
 
 1. **Core Language**:
-   - Python + core library urlliib: Used for the linkchecker, API, and database interactions.
+    - Python + core library urlliib: Used for the linkchecker, API, and database interactions.
 
 2. **Database**:
-   - PostgreSQL: Utilized for storing and managing information.
+    - PostgreSQL: Utilized for storing and managing information.
 
 3. **Backend Framework**:
-   - FastAPI: Employed to create and expose REST API endpoints, utilizing its efficiency and auto-generated components like Swagger.
+    - FastAPI: Employed to create and expose REST API endpoints, utilizing its efficiency and auto-generated components like Swagger.
 
 4. **Frontend**:
-   - See Integrations & Interfaces 
+    - See Integrations & Interfaces 
 
 4. **Containerization**:
-   - Docker: Used to containerize the linkchecker application, ensuring deployment and execution across different environments.
+    - Docker: Used to containerize the linkchecker application, ensuring deployment and execution across different environments.
 
 ### Overview of Key Features
 1.	**Link validation:** Returns HTTP status codes for each link, along with other important information such as the parent URL, any warnings, and the date and time of the test. 
