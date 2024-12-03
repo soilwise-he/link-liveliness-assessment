@@ -40,6 +40,7 @@ Evaluation process runs as a scheduled CI-CD pipeline in Gitlab. It uses 5 tread
 ### References
 -	[OGC API - Records](https://ogcapi.ogc.org/records/)
 -	[fastapi framework](https://fastapi.tiangolo.com/)
+-  [urllib](https://docs.python.org/3/library/urllib.html)
 
 ## Requirements
 
@@ -57,7 +58,7 @@ Users want to understand the availability of a resource before they click a link
 ### Technological Stack
 
 1. **Core Language**:
-   - Python: Used for the linkchecker, API, and database interactions.
+   - Python + core library urlliib: Used for the linkchecker, API, and database interactions.
 
 2. **Database**:
    - PostgreSQL: Utilized for storing and managing information.
@@ -83,31 +84,77 @@ Users want to understand the availability of a resource before they click a link
 
 ```mermaid
 flowchart LR
-    H[Harvester]-- write ---MR[(Metadata Records Table)]
+    H[Harvester]-- write ---MR[(Record Table)]
     MR-- read ---LAA[**Link Liveliness Assessment**]
     LAA --o API((**API**))
     MR-- read ---CA[Catalogue]
-    LAA-- write ---LLAO[(Link Liveliness Output Table)]
-    LLAO-- read ---CA
+    LAA-- write ---LLAL[(Links Table)]
+    LAA-- write ---LLAVH[(Validation_history Table)]
+    LLAL-- read ---CA
+    LLAVH-- read ---CA
+```
+### Sequence Diagram
+```mermaid
+stateDiagram-v2
+   Load: Load Records (json) from Catalogue
+   CheckLinksMap: Check if **Links** map is complete
+   Append: Add new record to **Links** table
+   CheckLinkValid: Check if the link is valid *(what exactly valid means?)*
+   LinkAss: Run links assessment
+   UpdateHistory: Update **Validation history**
+   CheckDepr: Check if link is deprecated
+   CheckFailures: Check if link assessment failed
+   WriteFailures: Note link failure
+   CheckNumFailures: Check number of consecutive failures
+   MarkDeprecated: Mark link as deprecated
+   ProcessLinks: Loop through the Links table
+   state if_state0 <<choice>>
+   state if_state1 <<choice>>
+   state if_state2 <<choice>>
+   state if_state3 <<choice>>
+   state if_state4 <<choice>>
+   [*] --> Load : Cron trigger (how often?)
+   Load --> CheckLinksMap
+   CheckLinksMap --> if_state0
+   if_state0 --> CheckLinkValid : if no
+   if_state0 --> ProcessLinks : if yes
+   CheckLinkValid --> if_state1
+   if_state1 --> [*]: if no
+   if_state1 --> Append : if yes
+   Append --> ProcessLinks
+
+   state ProcessLinks {
+      [*] --> CheckDepr
+      CheckDepr --> if_state2
+      if_state2 --> LinkAss : if no
+      if_state2 --> [*] : if yes
+      LinkAss --> UpdateHistory
+      UpdateHistory --> CheckFailures
+      CheckFailures --> if_state3
+      if_state3 --> WriteFailures : if yes
+      if_state3 --> [*] : if no
+      WriteFailures --> CheckNumFailures
+      CheckNumFailures --> if_state4
+      if_state4 --> MarkDeprecated : if n = 10
+      if_state4 --> [*] : if n < 10
+   }
 
 ```
-
-Link Liveliness Assessment internal flow - TBD
 
 ### Database Design
 
 ```mermaid
 classDiagram
     Links <|-- Validation_history
-    Links <|-- Record
+    Links <|-- Records
     Links : +Int ID
-    Links : +Int fk_record
+    Links : +Int fk_records
     Links : +String Urlname
     Links : +String deprecated
     Links : +String Consecutive_failures
-    class Record{
+    class Records{
     +Int ID
-    +String Record
+    +String Records
     }
     class Validation_history{
       +Int ID
@@ -115,7 +162,7 @@ classDiagram
       +String Statuscode
      +String isRedirect
      +String Errormessage
-     +String Redirect
+     +Date Timestamp
     }
 ```
 
