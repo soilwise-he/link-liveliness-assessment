@@ -4,31 +4,37 @@
 
 ### Component Overview and Scope
 
-The linkchecker component is designed to evaluate the validity and accuracy of links within metadata records in the a [OGC API - Records](https://ogcapi.ogc.org/records/) based System.
+The linkchecker component is designed to evaluate the validity and availability of links within metadata records advertised via a [OGC API - Records](https://ogcapi.ogc.org/records/) API.
 
 A link in metadata record either points to:
 -	another metadata record
--	a downloadable instance (pdf/zip/sqlite) of the resource
--	an API
+-	a downloadable instance (pdf/zip/sqlite/mp4/pptx) of the resource
+   - the resource itself
+   - documentation about the resource
+   - identifier of the resource (DOI)	   
+-	a webservice or API (sparql, openapi, graphql, ogc-api)
 
 Linkchecker evaluates for a set of metadata records, if:
 -	the links to external sources are valid
 -	the links within the repository are valid
--	link metadata represents accurately the resource
+-	link metadata represents accurately the resource (mime type, size, data model, access constraints)
 
 If endpoint is API, some sanity checks can be performed on the API:
 -	Identify if the API adopted any API-standard
 -	If an API standard is adopted, does the API support basic operations of that API
+-	Does the metadata correctly mention the standard
 
 The component returns a http status: `200 OK`, `401 Non Authorized`, `404 Not Found`, `500 Server Error` and timestamp.
 The component runs an evaluation for a single resource at request, or runs tests at intervals providing a history of availability.
 The results of the evaluation can be extracted via an API. The API is based on the fastapi framework and can be deployed using a docker container.
 
+Evaluation process runs as a scheduled CI-CD pipeline in Gitlab. It uses 5 treads to increase performance. 
+
 ### Users
 1. **all data users** (authorised + unauthorised)
-   - can see the results of link evaluation in the Catalogue (if XX is integrated)
+   - can see the results of link evaluation in the Catalogue (if XX is integrated) or access the API directly to retrieve reports
 2. **administrators**
-   - can manually start the evaluation process
+   - can configure and manually start the evaluation process
    - can see the history of link evaluations
 
 ### References
@@ -36,9 +42,15 @@ The results of the evaluation can be extracted via an API. The API is based on t
 -	[fastapi framework](https://fastapi.tiangolo.com/)
 
 ## Requirements
-TBD
+
 ### Functional Requirements
+
+Users want to understand the availability of a resource before they click a link. It helps them to understand if a click will be (un)successfull. The availability can be indicated as `not available` (404), `sometimes available` (in %), `authorisation required`, `deprecated` (too many times not available), 'unknown' (due to timeouts or other failures).
+
 ### Non-functional Requirements
+
+- Should respect rules in robots.txt
+- Should not introduce vulnerabilities
 
 ## Architecture
 
@@ -84,14 +96,40 @@ Link Liveliness Assessment internal flow - TBD
 
 ### Database Design
 
-TBD
+```mermaid
+classDiagram
+    Links <|-- Validation_history
+    Links <|-- Record
+    Links : +Int ID
+    Links : +Int fk_record
+    Links : +String Urlname
+    Links : +String deprecated
+    Links : +String Consecutive_failures
+    class Record{
+    +Int ID
+    +String Record
+    }
+    class Validation_history{
+      +Int ID
+      +Int fk_link
+      +String Statuscode
+     +String isRedirect
+     +String Errormessage
+     +String Redirect
+    }
+```
 
 ### Integrations & Interfaces
--	Visualisation of evaluation in Metadata Catalogue
+-	Visualisation of evaluation in Metadata Catalogue, the assessment report is retrieved using ajax from the each record page
 
 ### Key Architectural Decisions
 
-TBD
+Initially we started with [linkchecker](https://pypi.org/project/LinkChecker/) library, but performance was really slow, because it tested the same links for each page again and again.
+We decided to only test the links section of ogc-api:records, it means that links within for example metadata abstract are no longer tested.
+OGC OWS services are a substantial portion of links, these services return error 500, if called without parameters. For this scenario we created a dedicated script.
+If tests for a resource fail a number of times, the resource is no longer tested, and the resource tagged as `deprecated`.
+Links via a facade, such as DOI, are followed to the page they are referring to. It means the lla tool can understand the relation between DOI and the page it refers to.
+For each link it is known on which record(s) it is mentioned, so if a broken link occurs, we can find a contact to notify in the record.
 
 ## Risks & Limitations
 
