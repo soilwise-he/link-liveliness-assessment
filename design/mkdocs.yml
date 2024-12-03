@@ -1,0 +1,8 @@
+site_name: Link Liveliness Assessment
+
+theme:
+  name: material
+
+  palette:
+    - primary: brown
+    - accent: brown
