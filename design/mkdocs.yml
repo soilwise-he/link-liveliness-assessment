@@ -1,8 +1,5 @@
 site_name: Link Liveliness Assessment
+edit_uri: edit_uri: /blob/master/design/
 
-theme:
-  name: material
-
-  palette:
-    - primary: brown
-    - accent: brown
+nav:
+- Design: linkchecker.md
