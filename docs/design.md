@@ -1,0 +1,98 @@
+# Design Document: Link Liveliness Assessment
+
+## Introduction
+
+### Component Overview and Scope
+
+The linkchecker component is designed to evaluate the validity and accuracy of links within metadata records in the a [OGC API - Records](https://ogcapi.ogc.org/records/) based System.
+
+A link in metadata record either points to:
+-	another metadata record
+-	a downloadable instance (pdf/zip/sqlite) of the resource
+-	an API
+
+Linkchecker evaluates for a set of metadata records, if:
+-	the links to external sources are valid
+-	the links within the repository are valid
+-	link metadata represents accurately the resource
+
+If endpoint is API, some sanity checks can be performed on the API:
+-	Identify if the API adopted any API-standard
+-	If an API standard is adopted, does the API support basic operations of that API
+
+The component returns a http status: `200 OK`, `401 Non Authorized`, `404 Not Found`, `500 Server Error` and timestamp.
+The component runs an evaluation for a single resource at request, or runs tests at intervals providing a history of availability.
+The results of the evaluation can be extracted via an API. The API is based on the fastapi framework and can be deployed using a docker container.
+
+### Users
+1. **all data users** (authorised + unauthorised)
+   - can see the results of link evaluation in the Catalogue (if XX is integrated)
+2. **administrators**
+   - can manually start the evaluation process
+   - can see the history of link evaluations
+
+### References
+-	[OGC API - Records](https://ogcapi.ogc.org/records/)
+-	[fastapi framework](https://fastapi.tiangolo.com/)
+
+## Requirements
+TBD
+### Functional Requirements
+### Non-functional Requirements
+
+## Architecture
+
+### Technological Stack
+
+1. **Core Language**:
+   - Python: Used for the linkchecker, API, and database interactions.
+
+2. **Database**:
+   - PostgreSQL: Utilized for storing and managing information.
+
+3. **Backend Framework**:
+   - FastAPI: Employed to create and expose REST API endpoints, utilizing its efficiency and auto-generated components like Swagger.
+
+4. **Frontend**:
+   - See Integrations & Interfaces 
+
+4. **Containerization**:
+   - Docker: Used to containerize the linkchecker application, ensuring deployment and execution across different environments.
+
+### Overview of Key Features
+1.	**Link validation:** Returns HTTP status codes for each link, along with other important information such as the parent URL, any warnings, and the date and time of the test. 
+2.	**Broken link categorization:** Identifies and categorizes broken links based on status codes, including Redirection Errors, Client Errors, and Server Errors. 
+3.	**Deprecated links identification:** Flags links as deprecated if they have failed for X consecutive tests, in our case X equals to 10. Deprecated links are excluded from future tests to optimize performance. 
+4.	**Timeout management:** Allows the identification of URLs that exceed a timeout threshold which can be set manually as a parameter in linkchecker's properties. 
+5.	**Availability monitoring:** When run periodically, the tool builds a history of availability for each URL, enabling users to view the status of links over time. 
+6.	OWS services (WMS, WFS, WCS, CSW) typically return a HTTP 500 error when called without the necessary parameters. A handling for these services has been applied in order to detect and include the necessary parameters before being checked.
+
+### Component Diagrams
+
+```mermaid
+flowchart LR
+    H[Harvester]-- write ---MR[(Metadata Records Table)]
+    MR-- read ---LAA[**Link Liveliness Assessment**]
+    LAA --o API((**API**))
+    MR-- read ---CA[Catalogue]
+    LAA-- write ---LLAO[(Link Liveliness Output Table)]
+    LLAO-- read ---CA
+
+```
+
+Link Liveliness Assessment internal flow - TBD
+
+### Database Design
+
+TBD
+
+### Integrations & Interfaces
+-	Visualisation of evaluation in Metadata Catalogue
+
+### Key Architectural Decisions
+
+TBD
+
+## Risks & Limitations
+
+TBD
