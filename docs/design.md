@@ -84,63 +84,42 @@ Users want to understand the availability of a resource before they click a link
 6.	OWS services (WMS, WFS, WCS, CSW) typically return a HTTP 500 error when called without the necessary parameters. A handling for these services has been applied in order to detect and include the necessary parameters before being checked.
 
 ### Component Diagrams
-
 ```mermaid
 flowchart LR
-    H[Harvester]-- write ---MR[(Record Table)]
-    MR-- read ---LAA[**Link Liveliness Assessment**]
-    LAA --o API((**API**))
-    MR-- read ---CA[Catalogue]
-    LAA-- write ---LLAL[(Links Table)]
-    LAA-- write ---LLAVH[(Validation_history Table)]
-    LLAL-- read ---CA
-    LLAVH-- read ---CA
+    H["Harvester"]-- "writes" -->MR[("Record Table")]
+    MR-- "reads" -->LAA["Link Liveliness Assessment"]
+    MR-- "reads" -->CA["Catalogue"]
+    LAA-- "writes" -->LLAL[("Links Table")]
+    LAA-- "writes" -->LLAVH[("Validation History Table")]
+    CA-- "reads" -->API["**API**"]
+    LLAL-- "writes" -->API
+    LLAVH-- "writes" -->API
 ```
+
 ### Sequence Diagram
 ```mermaid
-stateDiagram-v2
-   Load: Load Records (json) from Catalogue
-   CheckLinksMap: Check if **Links** map is complete
-   Append: Add new record to **Links** table
-   CheckLinkValid: Check if the link is valid *(what exactly valid means?)*
-   LinkAss: Run links assessment
-   UpdateHistory: Update **Validation history**
-   CheckDepr: Check if link is deprecated
-   CheckFailures: Check if link assessment failed
-   WriteFailures: Note link failure
-   CheckNumFailures: Check number of consecutive failures
-   MarkDeprecated: Mark link as deprecated
-   ProcessLinks: Loop through the Links table
-   state if_state0 <<choice>>
-   state if_state1 <<choice>>
-   state if_state2 <<choice>>
-   state if_state3 <<choice>>
-   state if_state4 <<choice>>
-   [*] --> Load : Cron trigger (how often?)
-   Load --> CheckLinksMap
-   CheckLinksMap --> if_state0
-   if_state0 --> CheckLinkValid : if no
-   if_state0 --> ProcessLinks : if yes
-   CheckLinkValid --> if_state1
-   if_state1 --> [*]: if no
-   if_state1 --> Append : if yes
-   Append --> ProcessLinks
-
-   state ProcessLinks {
-      [*] --> CheckDepr
-      CheckDepr --> if_state2
-      if_state2 --> LinkAss : if no
-      if_state2 --> [*] : if yes
-      LinkAss --> UpdateHistory
-      UpdateHistory --> CheckFailures
-      CheckFailures --> if_state3
-      if_state3 --> WriteFailures : if yes
-      if_state3 --> [*] : if no
-      WriteFailures --> CheckNumFailures
-      CheckNumFailures --> if_state4
-      if_state4 --> MarkDeprecated : if n = 10
-      if_state4 --> [*] : if n < 10
-   }
+sequenceDiagram
+    participant Linkchecker
+    participant DB
+    participant Catalogue
+    
+    Linkchecker->>DB: Establish Database Connection
+    Linkchecker->>Catalogue: Extract Relevant URLs
+    
+    loop URL Processing
+        Linkchecker->DB: Check URL Existence
+        Linkchecker->DB: Check Deprecation Status
+        
+        alt URL Not Deprecated
+            Linkchecker-->DB: Insert/Update Records
+            Linkchecker-->DB: Insert/Update Links
+            Linkchecker-->DB: Update Validation History
+        else URL Deprecated
+            Linkchecker-->DB: Skip Processing
+        end
+    end
+    
+    Linkchecker->>DB: Close Database Connection
 
 ```
 
