@@ -46,13 +46,29 @@ class URLChecker:
                 response = requests.get(url, timeout=self.timeout,
                                        allow_redirects=True,
                                        headers={'User-Agent': USERAGENT})
+                
+            # Get content type from header
+            content_type = response.headers.get('content-type','').split(';')[0]
+            print("Content type is ",content_type)
+            
+            # Get content size from header
+            content_size = None
+            if 'content-length' in response. headers:
+                content_size = int(response.headers['content-length'])
+            elif 'content-range' in response.headers:
+                range_header = response.headers['range-header']
+                if 'bytes' in range_header and '/' in range_header:
+                    content_size = int(range_header.split('/')[-1])
 
+            print("Url size is",content_size)
             print(f'\x1b[36m Success: \x1b[0m {url}')
             return {
                 'url': url,
                 'status_code': response.status_code,
                 'is_redirect': response.url != url,
-                'valid': 200 <= response.status_code < 400
+                'valid': 200 <= response.status_code < 400,
+                'content_type': content_type,
+                'content_size': content_size
             }
         except requests.RequestException as e:
             print(f'\x1b[31;20m Failed: \x1b[0m {url}')
@@ -61,7 +77,9 @@ class URLChecker:
                 'error': str(e),
                 'status_code': None,
                 'is_redirect': None,
-                'valid': False
+                'valid': False,
+                'content_type': None,
+                'content_size': None
             }
 
     def check_urls(self, urls):
@@ -96,6 +114,8 @@ def setup_database():
         CREATE TABLE IF NOT EXISTS links (
             id_link SERIAL PRIMARY KEY,
             urlname TEXT UNIQUE,
+            link_type TEXT,
+            link_size BIGINT,
             fk_record INTEGER REFERENCES records(id),
             deprecated BOOLEAN DEFAULT FALSE,
             consecutive_failures INTEGER DEFAULT 0
@@ -141,6 +161,81 @@ def get_pagination_info(url):
     return None
  
 def insert_or_update_link(conn, url_result, record_id):
+    try:
+        with conn.cursor() as cur:
+            urlname = url_result['url']
+           
+            # Handle record insertion/retrieval
+            if record_id:
+                cur.execute("""
+                    INSERT INTO records (record_id)
+                    VALUES (%s)
+                    ON CONFLICT (record_id) DO NOTHING
+                    RETURNING id
+                """, (catalogue_domain + record_id,))
+                record_result = cur.fetchone()
+                
+                if record_result:
+                    record_db_id = record_result[0]
+                else:
+                    cur.execute("SELECT id FROM records WHERE record_id = %s", 
+                              (catalogue_domain + record_id,))
+                    record_result = cur.fetchone()
+                    record_db_id = record_result[0] if record_result else None
+            else:
+                record_db_id = None
+                
+            # Insert or update link
+            cur.execute("""
+                INSERT INTO links (urlname, fk_record, consecutive_failures, link_type, link_size)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (urlname) DO UPDATE
+                SET consecutive_failures = CASE
+                        WHEN %s THEN 0
+                        ELSE links.consecutive_failures + 1
+                    END,
+                    deprecated = CASE
+                        WHEN %s THEN false
+                        WHEN links.consecutive_failures + 1 >= %s THEN true
+                        ELSE links.deprecated
+                    END,
+                    link_type = EXCLUDED.link_type,
+                    link_size = EXCLUDED.link_size
+                RETURNING id_link, deprecated
+            """, (
+                    urlname, 
+                    record_db_id, 
+                    0 if url_result['valid'] else 1, 
+                    url_result['content_type'], 
+                    url_result['content_size'],
+                    url_result['valid'], 
+                    url_result['valid'], 
+                    MAX_FAILURES
+                ))
+           
+            link_id, deprecated = cur.fetchone()
+
+            if not deprecated:
+                # Insert validation history
+                cur.execute("""
+                    INSERT INTO validation_history(
+                        fk_link, status_code,
+                        is_redirect, error_message
+                    )
+                    VALUES(%s, %s, %s, %s)
+                """, (
+                    link_id,
+                    url_result['status_code'],
+                    url_result['is_redirect'],
+                    url_result.get('error')
+                ))
+           
+            conn.commit()
+            return link_id if not deprecated else None
+    except Exception as e:
+        conn.rollback()
+        print(f"Database error processing URL {url_result['url']}: {str(e)}")
+        return None
     with conn.cursor() as cur:
         urlname = url_result['url']
        
@@ -163,8 +258,8 @@ def insert_or_update_link(conn, url_result, record_id):
             
         # Get or create link
         cur.execute("""
-            INSERT INTO links (urlname, fk_record, consecutive_failures)
-            VALUES (%s, %s, %s)
+            INSERT INTO links (urlname, fk_record, consecutive_failures, link_type, link_size)
+            VALUES (%s, %s, %s, %s, %s)
             ON CONFLICT (urlname) DO UPDATE
             SET consecutive_failures =
                 CASE
@@ -176,9 +271,23 @@ def insert_or_update_link(conn, url_result, record_id):
                         WHEN %s THEN false
                         WHEN links.consecutive_failures + 1 >= %s THEN true
                         ELSE links.deprecated
-                    END
+                    END,
+                link_type = %s,
+                link_size = %s
             RETURNING id_link, deprecated
-        """, (urlname, record_db_id, 0 if url_result['valid'] else 1, url_result['valid'], url_result['valid'], MAX_FAILURES))
+        """, (
+                urlname, 
+                record_db_id, 
+                0 if url_result['valid'] else 1,
+                url_result.get['content_type'],
+                url_result.get['content_size'],
+                url_result['valid'], 
+                url_result['valid'], 
+                MAX_FAILURES,
+                url_result.get['content_type'],
+                url_result.get['content_size']
+            )
+        )
        
         link_id, deprecated = cur.fetchone()
 
