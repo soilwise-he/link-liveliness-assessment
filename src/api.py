@@ -33,6 +33,8 @@ class LinkResponse(BaseModel):
     urlname: str
     deprecated: Optional[bool] = None
     consecutive_failures: Optional[int] = None
+    link_type: Optional[str] = None  
+    link_size: Optional[int] = None  
 
 class StatusResponse(LinkResponse):
     status_code: Optional[int] = None
@@ -69,7 +71,7 @@ async def fetch_data(query: str, values: dict = {}):
 @app.get('/Redirection_URLs/3xx', response_model=List[StatusResponse])
 async def get_redirection_statuses():
     query = """
-        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures,
+        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size,
                r.record_id, vh.status_code, vh.is_redirect, vh.error_message, vh.timestamp
         FROM links l
         JOIN records r ON l.fk_record = r.id
@@ -88,7 +90,7 @@ async def get_redirection_statuses():
 @app.get('/Client_Error_URLs/4xx', response_model=List[StatusResponse])
 async def get_client_error_statuses():
     query = """
-        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures,
+        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size,
                r.record_id, vh.status_code, vh.is_redirect, vh.error_message, vh.timestamp
         FROM links l
         JOIN records r ON l.fk_record = r.id
@@ -107,7 +109,7 @@ async def get_client_error_statuses():
 @app.get('/Server_Errors_URLs/5xx', response_model=List[StatusResponse])
 async def get_server_error_statuses():
     query = """
-        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures,
+        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size,
                r.record_id, vh.status_code, vh.is_redirect, vh.error_message, vh.timestamp
         FROM links l
         JOIN records r ON l.fk_record = r.id
@@ -126,7 +128,7 @@ async def get_server_error_statuses():
 @app.get('/status/{item:path}', response_model=List[StatusResponse])
 async def get_status_for_url(item):
     query = """
-        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures,
+        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size,
                r.record_id, vh.status_code, vh.is_redirect, vh.error_message, vh.timestamp
         FROM links l
         JOIN records r ON l.fk_record = r.id
@@ -145,7 +147,7 @@ async def get_status_for_url(item):
 @app.get('/Timeout_URLs', response_model=List[TimeoutResponse])
 async def get_timeout_urls():
     query = """
-        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures,
+        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size,
                r.record_id, vh.status_code, vh.is_redirect, vh.error_message, vh.timestamp
         FROM links l
         JOIN records r ON l.fk_record = r.id
@@ -163,7 +165,7 @@ async def get_timeout_urls():
 @app.get('/Deprecated_URLs', response_model=List[LinkResponse])
 async def get_deprecated_urls():
     query = """
-        SELECT id_link, urlname, r.record_id, deprecated, consecutive_failures
+        SELECT id_link, urlname, r.record_id, deprecated, consecutive_failures, link_type, link_size
         FROM links
         JOIN records r ON l.fk_record = r.id
         WHERE deprecated IS TRUE
@@ -183,6 +185,8 @@ async def get_url_status_history(
             l.deprecated,
             r.record_id,
             l.consecutive_failures,
+            l.link_type, 
+            l.link_size,
             vh.status_code,
             vh.is_redirect,
             vh.error_message,
