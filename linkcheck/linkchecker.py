@@ -50,7 +50,8 @@ class URLChecker:
             # Get content type from header
             content_type = response.headers.get('content-type','').split(';')[0]
             # print("Content type is ",content_type)
-            
+            last_modified = response.headers.get('last-modified')
+
             # Get content size from header
             content_size = None
             if 'content-length' in response. headers:
@@ -68,7 +69,8 @@ class URLChecker:
                 'is_redirect': response.url != url,
                 'valid': 200 <= response.status_code < 400,
                 'content_type': content_type,
-                'content_size': content_size
+                'content_size': content_size,
+                'last_modified': last_modified
             }
         except requests.RequestException as e:
             print(f'\x1b[31;20m Failed: \x1b[0m {url}')
@@ -79,7 +81,8 @@ class URLChecker:
                 'is_redirect': None,
                 'valid': False,
                 'content_type': None,
-                'content_size': None
+                'content_size': None,
+                'last_modified': None
             }
 
     def check_urls(self, urls):
@@ -116,6 +119,7 @@ def setup_database():
             urlname TEXT UNIQUE,
             link_type TEXT,
             link_size BIGINT,
+            last_modified TIMESTAMP,
             fk_record INTEGER REFERENCES records(id),
             deprecated BOOLEAN DEFAULT FALSE,
             consecutive_failures INTEGER DEFAULT 0
@@ -159,13 +163,12 @@ def get_pagination_info(url):
   except Exception as e:
     print(f"Error calculating total pages from JSON data: {e}")
     return None
- 
+
 def insert_or_update_link(conn, url_result, record_id):
     try:
         with conn.cursor() as cur:
             urlname = url_result['url']
            
-            # Handle record insertion/retrieval
             if record_id:
                 cur.execute("""
                     INSERT INTO records (record_id)
@@ -185,10 +188,9 @@ def insert_or_update_link(conn, url_result, record_id):
             else:
                 record_db_id = None
                 
-            # Insert or update link
             cur.execute("""
-                INSERT INTO links (urlname, fk_record, consecutive_failures, link_type, link_size)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO links (urlname, fk_record, consecutive_failures, link_type, link_size, last_modified)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 ON CONFLICT (urlname) DO UPDATE
                 SET consecutive_failures = CASE
                         WHEN %s THEN 0
@@ -200,7 +202,8 @@ def insert_or_update_link(conn, url_result, record_id):
                         ELSE links.deprecated
                     END,
                     link_type = EXCLUDED.link_type,
-                    link_size = EXCLUDED.link_size
+                    link_size = EXCLUDED.link_size,
+                    last_modified = EXCLUDED.last_modified
                 RETURNING id_link, deprecated
             """, (
                     urlname, 
@@ -208,6 +211,7 @@ def insert_or_update_link(conn, url_result, record_id):
                     0 if url_result['valid'] else 1, 
                     url_result['content_type'], 
                     url_result['content_size'],
+                    url_result['last_modified'],
                     url_result['valid'], 
                     url_result['valid'], 
                     MAX_FAILURES
@@ -216,7 +220,6 @@ def insert_or_update_link(conn, url_result, record_id):
             link_id, deprecated = cur.fetchone()
 
             if not deprecated:
-                # Insert validation history
                 cur.execute("""
                     INSERT INTO validation_history(
                         fk_link, status_code,
@@ -236,79 +239,7 @@ def insert_or_update_link(conn, url_result, record_id):
         conn.rollback()
         print(f"Database error processing URL {url_result['url']}: {str(e)}")
         return None
-    with conn.cursor() as cur:
-        urlname = url_result['url']
-       
-        if record_id:
-            cur.execute("""
-                INSERT INTO records (record_id)
-                VALUES (%s || %s)
-                ON CONFLICT (record_id) DO NOTHING
-                RETURNING id
-            """, (catalogue_domain, record_id,))
-            record_result = cur.fetchone()
-            
-            if record_result:
-                record_db_id = record_result[0]
-            else:
-                cur.execute("SELECT id FROM records WHERE record_id = %s", (catalogue_domain + record_id,))
-                record_db_id = cur.fetchone()[0]
-        else:
-            record_db_id = None
-            
-        # Get or create link
-        cur.execute("""
-            INSERT INTO links (urlname, fk_record, consecutive_failures, link_type, link_size)
-            VALUES (%s, %s, %s, %s, %s)
-            ON CONFLICT (urlname) DO UPDATE
-            SET consecutive_failures =
-                CASE
-                    WHEN %s THEN 0
-                    ELSE links.consecutive_failures + 1
-                END,
-                deprecated =
-                    CASE
-                        WHEN %s THEN false
-                        WHEN links.consecutive_failures + 1 >= %s THEN true
-                        ELSE links.deprecated
-                    END,
-                link_type = %s,
-                link_size = %s
-            RETURNING id_link, deprecated
-        """, (
-                urlname, 
-                record_db_id, 
-                0 if url_result['valid'] else 1,
-                url_result.get['content_type'],
-                url_result.get['content_size'],
-                url_result['valid'], 
-                url_result['valid'], 
-                MAX_FAILURES,
-                url_result.get['content_type'],
-                url_result.get['content_size']
-            )
-        )
-       
-        link_id, deprecated = cur.fetchone()
-
-        if not deprecated:
-            # Insert validation history
-            cur.execute("""
-                INSERT INTO validation_history(
-                    fk_link, status_code,
-                    is_redirect, error_message
-                )
-                VALUES(%s, %s, %s, %s)
-            """, (
-                link_id,
-                url_result['status_code'],
-                url_result['is_redirect'],
-                url_result.get('error')
-            ))
-       
-        conn.commit()
-        return link_id if not deprecated else None
-
+   
 def process_item(item, relevant_links):
     if isinstance(item, dict) and 'href' in item and item['href'] not in [None,''] and item['href'].startswith('http') and not item['href'].startswith(base) :
         if 'rel' in item and item['rel'] not in [None,''] and item['rel'].lower() in ['collection', 'self', 'root', 'prev', 'next', 'canonical']:
