@@ -49,7 +49,7 @@ class URLChecker:
                 
             # Get content type from header
             content_type = response.headers.get('content-type','').split(';')[0]
-            print("Content type is ",content_type)
+            # print("Content type is ",content_type)
             
             # Get content size from header
             content_size = None
@@ -60,7 +60,7 @@ class URLChecker:
                 if 'bytes' in range_header and '/' in range_header:
                     content_size = int(range_header.split('/')[-1])
 
-            print("Url size is",content_size)
+            # print("Url size is",content_size)
             print(f'\x1b[36m Success: \x1b[0m {url}')
             return {
                 'url': url,
