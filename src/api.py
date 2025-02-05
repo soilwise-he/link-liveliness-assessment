@@ -33,16 +33,21 @@ class LinkResponse(BaseModel):
     urlname: str
     deprecated: Optional[bool] = None
     consecutive_failures: Optional[int] = None
+    link_type: Optional[str] = None  
+    link_size: Optional[int] = None 
+    last_modified: Optional[datetime] = None 
 
 class StatusResponse(LinkResponse):
-    status_code: Optional[int] = None 
-    is_redirect: Optional[bool] = None
+    status_code: Optional[int] = None
+    record_id: Optional[str] = None 
+    is_redirect: Optional[bool] = None  
     error_message: Optional[str] = None
     timestamp: datetime
 
 class TimeoutResponse(LinkResponse):
     status_code: Optional[int] = None  # Make status_code optional for timeout cases
     final_url: Optional[str] = None
+    record_id: Optional[str] = None 
     is_redirect: Optional[bool] = None
     error_message: Optional[str] = None
     timestamp: datetime
@@ -67,9 +72,10 @@ async def fetch_data(query: str, values: dict = {}):
 @app.get('/Redirection_URLs/3xx', response_model=List[StatusResponse])
 async def get_redirection_statuses():
     query = """
-        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures,
-               vh.status_code, vh.is_redirect, vh.error_message, vh.timestamp
+        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified,
+               r.record_id, vh.status_code, vh.is_redirect, vh.error_message, vh.timestamp
         FROM links l
+        JOIN records r ON l.fk_record = r.id
         JOIN validation_history vh ON l.id_link = vh.fk_link
         WHERE vh.status_code = ANY(:statuses)
         AND vh.timestamp = (
@@ -85,9 +91,10 @@ async def get_redirection_statuses():
 @app.get('/Client_Error_URLs/4xx', response_model=List[StatusResponse])
 async def get_client_error_statuses():
     query = """
-        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures,
-               vh.status_code, vh.is_redirect, vh.error_message, vh.timestamp
+        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified,
+               r.record_id, vh.status_code, vh.is_redirect, vh.error_message, vh.timestamp
         FROM links l
+        JOIN records r ON l.fk_record = r.id
         JOIN validation_history vh ON l.id_link = vh.fk_link
         WHERE vh.status_code = ANY(:statuses)
         AND vh.timestamp = (
@@ -103,9 +110,10 @@ async def get_client_error_statuses():
 @app.get('/Server_Errors_URLs/5xx', response_model=List[StatusResponse])
 async def get_server_error_statuses():
     query = """
-        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures,
-               vh.status_code, vh.is_redirect, vh.error_message, vh.timestamp
+        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified,
+               r.record_id, vh.status_code, vh.is_redirect, vh.error_message, vh.timestamp
         FROM links l
+        JOIN records r ON l.fk_record = r.id
         JOIN validation_history vh ON l.id_link = vh.fk_link
         WHERE vh.status_code = ANY(:statuses)
         AND vh.timestamp = (
@@ -121,9 +129,10 @@ async def get_server_error_statuses():
 @app.get('/status/{item:path}', response_model=List[StatusResponse])
 async def get_status_for_url(item):
     query = """
-        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures,
-               vh.status_code, vh.is_redirect, vh.error_message, vh.timestamp
+        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified,
+               r.record_id, vh.status_code, vh.is_redirect, vh.error_message, vh.timestamp
         FROM links l
+        JOIN records r ON l.fk_record = r.id
         JOIN validation_history vh ON l.id_link = vh.fk_link
         WHERE l.urlname = :item
         AND vh.timestamp = (
@@ -139,9 +148,10 @@ async def get_status_for_url(item):
 @app.get('/Timeout_URLs', response_model=List[TimeoutResponse])
 async def get_timeout_urls():
     query = """
-        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures,
-               vh.status_code, vh.is_redirect, vh.error_message, vh.timestamp
+        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified,
+               r.record_id, vh.status_code, vh.is_redirect, vh.error_message, vh.timestamp
         FROM links l
+        JOIN records r ON l.fk_record = r.id
         JOIN validation_history vh ON l.id_link = vh.fk_link
         WHERE (vh.error_message LIKE '%ReadTimeout%' OR vh.error_message LIKE '%ConnectTimeout%')
         AND vh.timestamp = (
@@ -156,9 +166,10 @@ async def get_timeout_urls():
 @app.get('/Deprecated_URLs', response_model=List[LinkResponse])
 async def get_deprecated_urls():
     query = """
-        SELECT id_link, urlname, deprecated, consecutive_failures
-        FROM links
-        WHERE deprecated IS TRUE
+        SELECT l.id_link, l.urlname, r.record_id, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified
+        FROM links l
+        JOIN records r ON l.fk_record = r.id
+        WHERE l.deprecated IS TRUE
     """
     data = await fetch_data(query=query)
     return data
@@ -173,15 +184,19 @@ async def get_url_status_history(
             l.id_link,
             l.urlname,
             l.deprecated,
+            r.record_id,
             l.consecutive_failures,
+            l.link_type, 
+            l.link_size,
+            l.last_modified,
             vh.status_code,
             vh.is_redirect,
             vh.error_message,
             vh.timestamp
         FROM 
             links l
-        JOIN 
-            validation_history vh ON l.id_link = vh.fk_link
+        JOIN records r ON l.fk_record = r.id
+        JOIN validation_history vh ON l.id_link = vh.fk_link
         WHERE 
             l.urlname = :url
         ORDER BY 
