@@ -1,3 +1,10 @@
+## [1.1.1](https://git.wur.nl/soilwise/link-liveliness-assessment/compare/1.1.0...1.1.1) (2025-02-06)
+
+
+### Bug Fixes
+
+* add schema reference in readme ([168aa75](https://git.wur.nl/soilwise/link-liveliness-assessment/commit/168aa75e108ff294081467c568cb6d20ab462b44))
+
 ## [1.1.0](https://git.wur.nl/soilwise/link-liveliness-assessment/compare/1.0.7...1.1.0) (2024-10-11)
 
 
