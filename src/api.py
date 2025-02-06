@@ -13,7 +13,7 @@ load_dotenv()
 
 opts=''
 if os.environ.get("POSTGRES_SCHEMA"):
-    opts = f"?search_path%3D{os.environ.get("POSTGRES_SCHEMA")}"
+    opts = f"?search_path%3D{os.environ.get('POSTGRES_SCHEMA')}"
 
 # Database connection setup
 DATABASE_URL = "postgresql://" + os.environ.get("POSTGRES_USER") + ":" +\
