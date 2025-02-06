@@ -91,12 +91,18 @@ class URLChecker:
         return results
 
 def setup_database():
+
+    opts=''
+    if os.environ.get("POSTGRES_SCHEMA"):
+        opts = f"-c search_path={os.environ.get('POSTGRES_SCHEMA')}"
+
     conn = psycopg2.connect(
         host=os.environ.get("POSTGRES_HOST"),
         port=os.environ.get("POSTGRES_PORT"),
         dbname=os.environ.get("POSTGRES_DB"),
         user=os.environ.get("POSTGRES_USER"),
-        password=os.environ.get("POSTGRES_PASSWORD")
+        password=os.environ.get("POSTGRES_PASSWORD"), 
+        options=opts
     )
     cur = conn.cursor()
    

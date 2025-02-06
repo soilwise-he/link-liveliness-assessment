@@ -11,10 +11,14 @@ import os
 # Load environment variables from .env file
 load_dotenv()
 
+opts=''
+if os.environ.get("POSTGRES_SCHEMA"):
+    opts = f"?search_path%3D{os.environ.get("POSTGRES_SCHEMA")}"
+
 # Database connection setup
 DATABASE_URL = "postgresql://" + os.environ.get("POSTGRES_USER") + ":" +\
     os.environ.get("POSTGRES_PASSWORD") + "@" + os.environ.get("POSTGRES_HOST") + ":" +\
-    os.environ.get("POSTGRES_PORT") + "/" + os.environ.get("POSTGRES_DB")
+    os.environ.get("POSTGRES_PORT") + "/" + os.environ.get("POSTGRES_DB") + opts 
 
 database = Database(DATABASE_URL)
 rootpath = os.environ.get("ROOTPATH") or "/"
