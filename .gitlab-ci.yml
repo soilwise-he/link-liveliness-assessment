@@ -60,6 +60,7 @@ Link-check-dev:
     - export POSTGRES_DB=$POSTGRES_DB_TEST
     - export POSTGRES_USER=$POSTGRES_USER_TEST
     - export POSTGRES_PASSWORD=$POSTGRES_PASSWORD_TEST
+    - export POSTGRES_SCHEMA=linky
     - export OGCAPI_URL=https://soilwise-he-test.containers.wurnet.nl/cat/
     - pip3 install -r linkcheck/requirements.txt
     - python3 linkcheck/linkchecker.py
@@ -78,6 +79,7 @@ Link-check-prod:
     - export POSTGRES_DB=$POSTGRES_DB_PROD
     - export POSTGRES_USER=$POSTGRES_USER_TEST
     - export POSTGRES_PASSWORD=$POSTGRES_PASSWORD_TEST
+    - export POSTGRES_SCHEMA=linky
     - export OGCAPI_URL=https://soilwise-he.containers.wur.nl/cat/
     - pip3 install -r linkcheck/requirements.txt
     - python3 linkcheck/linkchecker.py
