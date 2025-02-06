@@ -1,3 +1,10 @@
+## [1.1.2](https://git.wur.nl/soilwise/link-liveliness-assessment/compare/1.1.1...1.1.2) (2025-02-06)
+
+
+### Bug Fixes
+
+* typo ([7d7680e](https://git.wur.nl/soilwise/link-liveliness-assessment/commit/7d7680e5f091cfcd97b162b518d4f41f7ef169d4))
+
 ## [1.1.1](https://git.wur.nl/soilwise/link-liveliness-assessment/compare/1.1.0...1.1.1) (2025-02-06)
 
 
