@@ -57,7 +57,7 @@ class URLChecker:
             if 'content-length' in response. headers:
                 content_size = int(response.headers['content-length'])
             elif 'content-range' in response.headers:
-                range_header = response.headers['range-header']
+                range_header = response.headers['content-range']
                 if 'bytes' in range_header and '/' in range_header:
                     content_size = int(range_header.split('/')[-1])
 
@@ -107,7 +107,8 @@ def setup_database():
     cur = conn.cursor()
    
     # Drop existing tables
-    cur.execute("DROP TABLE IF EXISTS records CASCADE")
+    if os.environ.get("POSTGRES_SCHEMA"): # else it will drop the records table from public
+        cur.execute("DROP TABLE IF EXISTS records CASCADE")
     cur.execute("DROP TABLE IF EXISTS links CASCADE")
     cur.execute("DROP TABLE IF EXISTS validation_history CASCADE")
 
