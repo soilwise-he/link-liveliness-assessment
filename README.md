@@ -31,7 +31,11 @@ If endpoint is API, some sanity checks can be performed on the API:
   
 The benefit of latter is that it provides more information then a simple ping to the index page of the API, typical examples of standardised API's are SOAP, GraphQL, SPARQL, OpenAPI, WMS, WFS
 
-The results of the validation can be extracted via an API. The API is based on the [fastapi framework](https://fastapi.tiangolo.com/) and can be deployed using a docker container.
+The results of the validation can be extracted via an API. The API is based on the [fastapi framework](https://fastapi.tiangolo.com/) and can be deployed using a docker container. Or run locally with python
+
+```
+python3 -m uvicorn api:app --reload --host 0.0.0.0 --port 8000
+```
 
 ***Sample API response*** 
 ```
@@ -180,7 +184,7 @@ This tool assesses the linkage section of any record in an OGC API - Records.
 Set the endpoint to be analysed as 2 environment variables
 
 ```
-export OGCAPI_URL=https://soilwise-he.containers.wur.nl/cat/
+export OGCAPI_URL=https://repository.soilwise-he.eu/cat/
 export OGCAPI_COLLECTION=metadata:main
 ```
 

@@ -7,20 +7,24 @@ from datetime import datetime
 import asyncpg
 import logging
 import os
+from urllib.parse import quote_plus
 
 # Load environment variables from .env file
 load_dotenv()
 
-opts=''
-if os.environ.get("POSTGRES_SCHEMA"):
-    opts = f"?search_path%3D{os.environ.get('POSTGRES_SCHEMA')}"
-
 # Database connection setup
-DATABASE_URL = "postgresql://" + os.environ.get("POSTGRES_USER") + ":" +\
-    os.environ.get("POSTGRES_PASSWORD") + "@" + os.environ.get("POSTGRES_HOST") + ":" +\
-    os.environ.get("POSTGRES_PORT") + "/" + os.environ.get("POSTGRES_DB") + opts 
+DATABASE_URL = f"postgresql://{os.environ.get('POSTGRES_USER')}:{os.environ.get('POSTGRES_PASSWORD')}@{os.environ.get('POSTGRES_HOST')}:{os.environ.get('POSTGRES_PORT')}/{os.environ.get('POSTGRES_DB')}"
+
+# if os.environ.get("POSTGRES_SCHEMA"):
+#    unfortunately this does not work
+#    DATABASE_URL += f"?options=-c+search_path%3D{quote_plus(os.environ.get('POSTGRES_SCHEMA'))}"
 
 database = Database(DATABASE_URL)
+schema = 'public'
+if os.environ.get("POSTGRES_SCHEMA"):
+    schema = os.environ.get("POSTGRES_SCHEMA")
+print(f"DB: {DATABASE_URL.replace(os.environ.get('POSTGRES_PASSWORD'),'*****')}; Schema: {schema}")
+
 rootpath = os.environ.get("ROOTPATH") or "/"
 
 # FastAPI app instance
@@ -75,12 +79,12 @@ async def fetch_data(query: str, values: dict = {}):
 # Endpoint to retrieve data with redirection statuses
 @app.get('/Redirection_URLs/3xx', response_model=List[StatusResponse])
 async def get_redirection_statuses():
-    query = """
+    query = f"""
         SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified,
                r.record_id, vh.status_code, vh.is_redirect, vh.error_message, vh.timestamp
-        FROM links l
-        JOIN records r ON l.fk_record = r.id
-        JOIN validation_history vh ON l.id_link = vh.fk_link
+        FROM {schema}.links l
+        JOIN {schema}.records r ON l.fk_record = r.id
+        JOIN {schema}.validation_history vh ON l.id_link = vh.fk_link
         WHERE vh.status_code = ANY(:statuses)
         AND vh.timestamp = (
             SELECT MAX(timestamp)
@@ -94,16 +98,16 @@ async def get_redirection_statuses():
 # Endpoint to retrieve data with client error statuses
 @app.get('/Client_Error_URLs/4xx', response_model=List[StatusResponse])
 async def get_client_error_statuses():
-    query = """
+    query = f"""
         SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified,
                r.record_id, vh.status_code, vh.is_redirect, vh.error_message, vh.timestamp
-        FROM links l
-        JOIN records r ON l.fk_record = r.id
-        JOIN validation_history vh ON l.id_link = vh.fk_link
+        FROM {schema}.links l
+        JOIN {schema}.records r ON l.fk_record = r.id
+        JOIN {schema}.validation_history vh ON l.id_link = vh.fk_link
         WHERE vh.status_code = ANY(:statuses)
         AND vh.timestamp = (
             SELECT MAX(timestamp)
-            FROM validation_history
+            FROM {schema}.validation_history
             WHERE fk_link = l.id_link
         )
     """
@@ -113,16 +117,16 @@ async def get_client_error_statuses():
 # Endpoint to retrieve data with server error statuses
 @app.get('/Server_Errors_URLs/5xx', response_model=List[StatusResponse])
 async def get_server_error_statuses():
-    query = """
+    query = f"""
         SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified,
                r.record_id, vh.status_code, vh.is_redirect, vh.error_message, vh.timestamp
-        FROM links l
-        JOIN records r ON l.fk_record = r.id
-        JOIN validation_history vh ON l.id_link = vh.fk_link
+        FROM {schema}.links l
+        JOIN {schema}.records r ON l.fk_record = r.id
+        JOIN {schema}.validation_history vh ON l.id_link = vh.fk_link
         WHERE vh.status_code = ANY(:statuses)
         AND vh.timestamp = (
             SELECT MAX(timestamp)
-            FROM validation_history
+            FROM {schema}.validation_history
             WHERE fk_link = l.id_link
         )
     """
@@ -132,16 +136,16 @@ async def get_server_error_statuses():
 # Endpoint to retrieve data for a specific URL
 @app.get('/status/{item:path}', response_model=List[StatusResponse])
 async def get_status_for_url(item):
-    query = """
+    query = f"""
         SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified,
                r.record_id, vh.status_code, vh.is_redirect, vh.error_message, vh.timestamp
-        FROM links l
-        JOIN records r ON l.fk_record = r.id
-        JOIN validation_history vh ON l.id_link = vh.fk_link
+        FROM {schema}.links l
+        JOIN {schema}.records r ON l.fk_record = r.id
+        JOIN {schema}.validation_history vh ON l.id_link = vh.fk_link
         WHERE l.urlname = :item
         AND vh.timestamp = (
             SELECT MAX(timestamp)
-            FROM validation_history
+            FROM {schema}.validation_history
             WHERE fk_link = l.id_link
         )
     """
@@ -151,16 +155,16 @@ async def get_status_for_url(item):
 # Update the timeout endpoint to match other query structures
 @app.get('/Timeout_URLs', response_model=List[TimeoutResponse])
 async def get_timeout_urls():
-    query = """
+    query = f"""
         SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified,
                r.record_id, vh.status_code, vh.is_redirect, vh.error_message, vh.timestamp
-        FROM links l
-        JOIN records r ON l.fk_record = r.id
-        JOIN validation_history vh ON l.id_link = vh.fk_link
+        FROM {schema}.links l
+        JOIN {schema}.records r ON l.fk_record = r.id
+        JOIN {schema}.validation_history vh ON l.id_link = vh.fk_link
         WHERE (vh.error_message LIKE '%ReadTimeout%' OR vh.error_message LIKE '%ConnectTimeout%')
         AND vh.timestamp = (
             SELECT MAX(timestamp)
-            FROM validation_history
+            FROM {schema}.validation_history
             WHERE fk_link = l.id_link
         )
     """
@@ -169,10 +173,10 @@ async def get_timeout_urls():
 
 @app.get('/Deprecated_URLs', response_model=List[LinkResponse])
 async def get_deprecated_urls():
-    query = """
+    query = f"""
         SELECT l.id_link, l.urlname, r.record_id, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified
-        FROM links l
-        JOIN records r ON l.fk_record = r.id
+        FROM {schema}.links l
+        JOIN {schema}.records r ON l.fk_record = r.id
         WHERE l.deprecated IS TRUE
     """
     data = await fetch_data(query=query)
@@ -183,7 +187,7 @@ async def get_url_status_history(
     url: str = Query(..., description="URL to get availability history"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of results (default: 100, min: 1, max: 1000)")
 ) -> List[StatusResponse]:
-    query = """
+    query = f"""
         SELECT 
             l.id_link,
             l.urlname,
@@ -198,9 +202,9 @@ async def get_url_status_history(
             vh.error_message,
             vh.timestamp
         FROM 
-            links l
-        JOIN records r ON l.fk_record = r.id
-        JOIN validation_history vh ON l.id_link = vh.fk_link
+            {schema}.links l
+        JOIN {schema}.records r ON l.fk_record = r.id
+        JOIN {schema}.validation_history vh ON l.id_link = vh.fk_link
         WHERE 
             l.urlname = :url
         ORDER BY 
@@ -224,6 +228,8 @@ async def get_url_status_history(
 async def startup():
     try:
         await database.connect()
+        if os.environ.get("POSTGRES_SCHEMA"):
+            await database.execute(query=f"SET search_path TO {os.environ.get('POSTGRES_SCHEMA')},public;")
     except Exception as e:
         raise HTTPException(status_code=500, detail="Database connection failed") from e
 
