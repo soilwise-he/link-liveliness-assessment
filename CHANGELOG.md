@@ -1,3 +1,10 @@
+## [1.1.4](https://git.wur.nl/soilwise/link-liveliness-assessment/compare/1.1.3...1.1.4) (2025-02-25)
+
+
+### Bug Fixes
+
+* prepare for release ([4a3e6d3](https://git.wur.nl/soilwise/link-liveliness-assessment/commit/4a3e6d3e64d69ddf9c1a54a4189e90772e9cfc8e))
+
 ## [1.1.3](https://git.wur.nl/soilwise/link-liveliness-assessment/compare/1.1.2...1.1.3) (2025-02-11)
 
 
