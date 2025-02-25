@@ -1,12 +1,8 @@
-# isric instance
-
-- forked from https://github.com/soilwise-he/link-liveliness-assessment
-
 # OGC API - Records; link liveliness assessment tool
 
 ## Overview
 
-The linkchecker component is designed to evaluate the validity and accuracy of links within metadata records in the a [OGC API - Records](https://ogcapi.ogc.org/records/) based System. 
+The linkchecker component is designed to evaluate the validity and accuracy of links within metadata records in a [OGC API - Records](https://ogcapi.ogc.org/records/) based API. 
 
 A component which evaluates for a set of metadata records, if:
 
