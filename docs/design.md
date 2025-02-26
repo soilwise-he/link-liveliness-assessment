@@ -31,7 +31,7 @@ The component returns a http status: `200 OK`, `401 Non Authorized`, `404 Not Fo
 The component runs an evaluation for a single resource at request, or runs tests at intervals providing a history of availability.
 The results of the evaluation can be extracted via an API. The API is based on the fastapi framework and can be deployed using a docker container.
 
-Evaluation process runs as a scheduled CI-CD pipeline in Gitlab. It uses 5 treads to increase performance. 
+Evaluation process runs as a scheduled CI-CD pipeline in Gitlab. It uses 5 threads to increase performance. 
 
 ### Users
 1. **all data users** (authorised + unauthorised)
@@ -76,7 +76,8 @@ Users want to understand the availability of a resource before they click a link
     - Docker: Used to containerize the linkchecker application, ensuring deployment and execution across different environments.
 
 ### Overview of Key Features
-1.	**Link validation:** Returns HTTP status codes for each link, along with other important information such as the parent URL, any warnings, and the date and time of the test. 
+1.	**Link validation:** Returns HTTP status codes for each link, along with other important information such as the parent URL, any warnings, and the date and time of the test.
+Additionally, the tool enhances link analysis by identifying various metadata attributes, including file format type (e.g., image/jpeg, application/pdf, text/html), file size (in bytes), and last modification date. This provides users with valuable insights about the resource before accessing it. 
 2.	**Broken link categorization:** Identifies and categorizes broken links based on status codes, including Redirection Errors, Client Errors, and Server Errors. 
 3.	**Deprecated links identification:** Flags links as deprecated if they have failed for X consecutive tests, in our case X equals to 10. Deprecated links are excluded from future tests to optimize performance. 
 4.	**Timeout management:** Allows the identification of URLs that exceed a timeout threshold which can be set manually as a parameter in linkchecker's properties. 
@@ -112,7 +113,7 @@ sequenceDiagram
         
         alt URL Not Deprecated
             Linkchecker-->DB: Insert/Update Records
-            Linkchecker-->DB: Insert/Update Links
+            Linkchecker-->DB: Insert/Update Links with file format type, size, last_modified
             Linkchecker-->DB: Update Validation History
         else URL Deprecated
             Linkchecker-->DB: Skip Processing
@@ -133,6 +134,9 @@ classDiagram
     Links : +Int fk_records
     Links : +String Urlname
     Links : +String deprecated
+    Links : +String link_type
+    Links : +Int link_size
+    Links : +DateTime last_modified
     Links : +String Consecutive_failures
     class Records{
     +Int ID
@@ -150,7 +154,7 @@ classDiagram
 
 ### Integrations & Interfaces
 -	Visualisation of evaluation in Metadata Catalogue, the assessment report is retrieved using ajax from the each record page
-
+-   FastAPI now incorporates additional metadata for links, including file format type, size, and last modified date.
 ### Key Architectural Decisions
 
 Initially we started with [linkchecker](https://pypi.org/project/LinkChecker/) library, but performance was really slow, because it tested the same links for each page again and again.
@@ -159,6 +163,24 @@ OGC OWS services are a substantial portion of links, these services return error
 If tests for a resource fail a number of times, the resource is no longer tested, and the resource tagged as `deprecated`.
 Links via a facade, such as DOI, are followed to the page they are referring to. It means the lla tool can understand the relation between DOI and the page it refers to.
 For each link it is known on which record(s) it is mentioned, so if a broken link occurs, we can find a contact to notify in the record.
+
+
+For the second release we have enhanced the link liveliness assement tool to collect more information about the resources:
+
+  - **File type format** (media type) to help users understand what format they'll be accessing (e.g., image/jpeg, application/pdf, text/html)
+  - **File size** to inform users about download expectations
+  - **Last modification date** to indicate how recent the resource is
+
+## API Updates
+The API has been extended to include the newly tracked metadata fields:
+- **link_type**: Shows the file format type of the resource (e.g., image/jpeg, application/pdf)
+- **link_size**: Indicates the size of the resource in bytes
+- **last_modified**: Provides the timestamp when the resource was modified
+
+## Next Steps
+We plan to enhance the link liveliness assesment tool to include geospatial attributes such as field details, and spatial 
+information from various data formats (e.g., GeoTIFF, Shapefile, CSV).
+This will be accomplished using GDAL and OWSLib to enable efficient retrieval without the need to download the full files.
 
 ## Risks & Limitations
 
