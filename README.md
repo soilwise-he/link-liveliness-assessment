@@ -1,5 +1,7 @@
 # OGC API - Records; link liveliness assessment tool
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.14923790.svg)](https://doi.org/10.5281/zenodo.14923790)
+
 ## Overview
 
 The linkchecker component is designed to evaluate the validity and accuracy of links within metadata records in a [OGC API - Records](https://ogcapi.ogc.org/records/) based API. 
