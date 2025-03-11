@@ -246,15 +246,109 @@ def insert_or_update_link(conn, url_result, record_id):
         conn.rollback()
         print(f"Database error processing URL {url_result['url']}: {str(e)}")
         return None
-   
-def process_item(item, relevant_links):
-    if isinstance(item, dict) and 'href' in item and item['href'] not in [None,''] and item['href'].startswith('http') and not item['href'].startswith(base) :
-        if 'rel' in item and item['rel'] not in [None,''] and item['rel'].lower() in ['collection', 'self', 'root', 'prev', 'next', 'canonical']:
-            None
-        else:
-            process_url(item['href'], relevant_links)
+
+
+def process_ogc_api(url, ltype, lname, md_id):
+
+    match ltype:
+        case 'wms':
+            try: 
+                from owslib.wms import WebMapService
+                wms = WebMapService(url, version='1.3.0')
+                if lname in list(wms.contents): # below should be similar for all servictypes?
+                    return wms.contents
+                elif len(wms.contents) == 1:
+                    # only 1 layer in service
+                    return wms.contents[0]
+                else:  # layer.metadataurl includes md.id
+                    for l in wms.contents:
+                        if l.metadataUrls:
+                            for mu in l.metadataUrls:
+                                if md_id in mu:
+                                    return l # more than one could match, now only first 
+                return True # No layer match, but capabilities successfull
+            except Exception as e:
+                print(f"Error getting WMS capabilities at {url}: {e}")
+                return False
+
+        case 'wmts':
+            try:
+                from owslib.wmts import WebMapTileService
+                wmts = WebMapTileService(url)
+                if lname in list(wmts.contents): # below should be similar for all servictypes?
+                    return wmts.contents
+                elif len(wmts.contents) == 1:
+                    # only 1 layer in service
+                    return wmts.contents[0] 
+                return True # No layer match, but capabilities successfull
+            except Exception as e:
+                print(f"Error getting WMTS capabilities at {url}: {e}")
+                return False
+
+        case 'wfs':
+            try: 
+                from owslib.wfs import WebFeatureService
+                wfs20 = WebFeatureService(url=url, version='2.0.0')
+                if lname in list(wfs20.contents): # below should be similar for all servictypes?
+                    wfs20.contents[lname].__dict__.update({'schema':wfs20.get_schema(lname).__dict__})
+                    return wfs20.contents[lname].update()
+                elif len(wfs20.contents) == 1:
+                    # only 1 layer in service
+                    return wfs20.contents[0]
+                else:  # layer.metadataurl includes md.id
+                    for l in wfs20.contents:
+                        if l.metadataUrls:
+                            for mu in l.metadataUrls:
+                                if md_id in mu:
+                                    return l # more than one could match, now only first 
+                return True # No layer match, but capabilities successfull
+            except Exception as e:
+                print(f"Error getting WFS capabilities at {url}: {e}")
+                return False
+
+        case 'wcs': 
+            try:
+                from owslib.wcs import WebCoverageService
+                wcs = WebCoverageService(url, version='2.0.1')
+                if lname in list(wcs.contents): # below should be similar for all servictypes?
+                    return wcs.contents
+                elif len(wcs.contents) == 1:
+                    # only 1 layer in service
+                    return wcs.contents[0]
+                else:  # layer.metadataurl includes md.id
+                    for l in wcs.contents:
+                        if l.metadataUrls:
+                            for mu in l.metadataUrls:
+                                if md_id in mu:
+                                    return l # more than one could match, now only first 
+                return True # No layer match, but capabilities successfull
+            except Exception as e:
+                print(f"Error getting WCS capabilities at {url}: {e}")
+                return False
+
+        # case 'csw':
+
+        case 'ogcapi':
+            try:
+                import json
+                from owslib.ogcapi.features import Features
+                if 'collections/' in url:
+                    lname = url.split('collections/').pop().split('/')[0]
+                    url = url.split('collections/')[0]
+                oaf = Features(url)
+                if lname not in [None,'']:
+                    return True
+                else:
+                    col = oaf.collection(lname)
+                    return col
+            except Exception as e:
+                print(f"Error getting collection {lname} at {url}: {e}")
+                return False    
 
 def process_url(url, relevant_links):
+
+    # todo: replace this section wuth the process_ogc_api method
+
     ogc_services = ['wms', 'wmts', 'wfs', 'wcs', 'csw', 'ows']
 
     # Check if it's an OGC service and determine the service type
@@ -304,7 +398,7 @@ def extract_relevant_links_from_json(json_url):
                     feature_links = set()
                     # Process links array
                     for link in feature.get('links', []):
-                        process_item(link, feature_links)
+                        process_item(link, feature_links, record_id)
                     # Add all links from this feature to the map with their record ID
                     for link in feature_links:
                         links_map[link] = record_id
@@ -314,13 +408,12 @@ def extract_relevant_links_from_json(json_url):
         print(f"Error extracting links from JSON at {json_url}: {e}")
         return {}
 
-def process_item(item, relevant_links):
-    if isinstance(item, dict) and 'href' in item and item['href'] not in [None, '', 'null']:
-        if item['href'].startswith('http'):
-            if 'rel' in item and item['rel'] not in [None,''] and item['rel'].lower() in ['collection', 'self', 'root', 'prev', 'next', 'canonical']:
-                None
-            else:
-                process_url(item['href'], relevant_links)
+def process_item(item, relevant_links, record):
+    if isinstance(item, dict) and 'href' in item and item['href'] not in [None,''] and item['href'].startswith('http') and not item['href'].startswith(base) :
+        if 'rel' in item and item['rel'] not in [None,''] and item['rel'].lower() in ['collection', 'self', 'root', 'prev', 'next', 'canonical']:
+            None
+        else:
+            process_url(item['href'], item.get('type'), item.get('name'), relevant_links, record)
 
 def main():
     start_time = time.time()
