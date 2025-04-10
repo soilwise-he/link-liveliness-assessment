@@ -3,12 +3,12 @@ from dotenv import load_dotenv
 from lxml import html
 from urllib.parse import urlparse, parse_qs, urlencode
 from concurrent.futures import ThreadPoolExecutor
+from ogc_services import process_ogc_api
 import psycopg2
-import psycopg2.extras
 import requests
 import math
 import time
-import re
+import json
 import os
 
 # Configuration constants
@@ -46,7 +46,7 @@ class URLChecker:
                 response = requests.get(url, timeout=self.timeout,
                                        allow_redirects=True,
                                        headers={'User-Agent': USERAGENT})
-                
+               
             # Get content type from header
             content_type = response.headers.get('content-type','').split(';')[0]
             # print("Content type is ",content_type)
@@ -62,7 +62,7 @@ class URLChecker:
                     content_size = int(range_header.split('/')[-1])
 
             # print("Url size is",content_size)
-            print(f'\x1b[36m Success: \x1b[0m {url}')
+            # print(f'\x1b[36m Success: \x1b[0m {url}')
             return {
                 'url': url,
                 'status_code': response.status_code,
@@ -70,7 +70,8 @@ class URLChecker:
                 'valid': 200 <= response.status_code < 400,
                 'content_type': content_type,
                 'content_size': content_size,
-                'last_modified': last_modified
+                'last_modified': last_modified,
+                'gis_capabilities': None
             }
         except requests.RequestException as e:
             print(f'\x1b[31;20m Failed: \x1b[0m {url}')
@@ -82,7 +83,8 @@ class URLChecker:
                 'valid': False,
                 'content_type': None,
                 'content_size': None,
-                'last_modified': None
+                'last_modified': None,
+                'gis_capabilities': None
             }
 
     def check_urls(self, urls):
@@ -101,7 +103,7 @@ def setup_database():
         port=os.environ.get("POSTGRES_PORT"),
         dbname=os.environ.get("POSTGRES_DB"),
         user=os.environ.get("POSTGRES_USER"),
-        password=os.environ.get("POSTGRES_PASSWORD"), 
+        password=os.environ.get("POSTGRES_PASSWORD"),
         options=opts
     )
     cur = conn.cursor()
@@ -120,7 +122,7 @@ def setup_database():
             record_id TEXT UNIQUE
         )
         """,
-        """ 
+        """
         CREATE TABLE IF NOT EXISTS links (
             id_link SERIAL PRIMARY KEY,
             urlname TEXT UNIQUE,
@@ -129,7 +131,8 @@ def setup_database():
             last_modified TIMESTAMP,
             fk_record INTEGER REFERENCES records(id),
             deprecated BOOLEAN DEFAULT FALSE,
-            consecutive_failures INTEGER DEFAULT 0
+            consecutive_failures INTEGER DEFAULT 0,
+            gis_capabilities JSONB DEFAULT '{}'::JSONB
         )
         """,
         """
@@ -184,20 +187,22 @@ def insert_or_update_link(conn, url_result, record_id):
                     RETURNING id
                 """, (catalogue_domain + record_id,))
                 record_result = cur.fetchone()
-                
+               
                 if record_result:
                     record_db_id = record_result[0]
                 else:
-                    cur.execute("SELECT id FROM records WHERE record_id = %s", 
+                    cur.execute("SELECT id FROM records WHERE record_id = %s",
                               (catalogue_domain + record_id,))
                     record_result = cur.fetchone()
                     record_db_id = record_result[0] if record_result else None
             else:
                 record_db_id = None
-                
+               
+            gis_caps = json.dumps(url_result['gis_capabilities']) if url_result['gis_capabilities'] else '{}'
+           
             cur.execute("""
-                INSERT INTO links (urlname, fk_record, consecutive_failures, link_type, link_size, last_modified)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO links (urlname, fk_record, consecutive_failures, link_type, link_size, last_modified, gis_capabilities)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (urlname) DO UPDATE
                 SET consecutive_failures = CASE
                         WHEN %s THEN 0
@@ -210,17 +215,19 @@ def insert_or_update_link(conn, url_result, record_id):
                     END,
                     link_type = EXCLUDED.link_type,
                     link_size = EXCLUDED.link_size,
-                    last_modified = EXCLUDED.last_modified
+                    last_modified = EXCLUDED.last_modified,
+                    gis_capabilities = EXCLUDED.gis_capabilities
                 RETURNING id_link, deprecated
             """, (
-                    urlname, 
-                    record_db_id, 
-                    0 if url_result['valid'] else 1, 
-                    url_result['content_type'], 
+                    urlname,
+                    record_db_id,
+                    0 if url_result['valid'] else 1,
+                    url_result['content_type'],
                     url_result['content_size'],
                     url_result['last_modified'],
-                    url_result['valid'], 
-                    url_result['valid'], 
+                    gis_caps,
+                    url_result['valid'],
+                    url_result['valid'],
                     MAX_FAILURES
                 ))
            
@@ -247,139 +254,69 @@ def insert_or_update_link(conn, url_result, record_id):
         print(f"Database error processing URL {url_result['url']}: {str(e)}")
         return None
 
-
-def process_ogc_api(url, ltype, lname, md_id):
-
-    match ltype:
-        case 'wms':
-            try: 
-                from owslib.wms import WebMapService
-                wms = WebMapService(url, version='1.3.0')
-                if lname in list(wms.contents): # below should be similar for all servictypes?
-                    return wms.contents
-                elif len(wms.contents) == 1:
-                    # only 1 layer in service
-                    return wms.contents[0]
-                else:  # layer.metadataurl includes md.id
-                    for l in wms.contents:
-                        if l.metadataUrls:
-                            for mu in l.metadataUrls:
-                                if md_id in mu:
-                                    return l # more than one could match, now only first 
-                return True # No layer match, but capabilities successfull
-            except Exception as e:
-                print(f"Error getting WMS capabilities at {url}: {e}")
-                return False
-
-        case 'wmts':
-            try:
-                from owslib.wmts import WebMapTileService
-                wmts = WebMapTileService(url)
-                if lname in list(wmts.contents): # below should be similar for all servictypes?
-                    return wmts.contents
-                elif len(wmts.contents) == 1:
-                    # only 1 layer in service
-                    return wmts.contents[0] 
-                return True # No layer match, but capabilities successfull
-            except Exception as e:
-                print(f"Error getting WMTS capabilities at {url}: {e}")
-                return False
-
-        case 'wfs':
-            try: 
-                from owslib.wfs import WebFeatureService
-                wfs20 = WebFeatureService(url=url, version='2.0.0')
-                if lname in list(wfs20.contents): # below should be similar for all servictypes?
-                    wfs20.contents[lname].__dict__.update({'schema':wfs20.get_schema(lname).__dict__})
-                    return wfs20.contents[lname].update()
-                elif len(wfs20.contents) == 1:
-                    # only 1 layer in service
-                    return wfs20.contents[0]
-                else:  # layer.metadataurl includes md.id
-                    for l in wfs20.contents:
-                        if l.metadataUrls:
-                            for mu in l.metadataUrls:
-                                if md_id in mu:
-                                    return l # more than one could match, now only first 
-                return True # No layer match, but capabilities successfull
-            except Exception as e:
-                print(f"Error getting WFS capabilities at {url}: {e}")
-                return False
-
-        case 'wcs': 
-            try:
-                from owslib.wcs import WebCoverageService
-                wcs = WebCoverageService(url, version='2.0.1')
-                if lname in list(wcs.contents): # below should be similar for all servictypes?
-                    return wcs.contents
-                elif len(wcs.contents) == 1:
-                    # only 1 layer in service
-                    return wcs.contents[0]
-                else:  # layer.metadataurl includes md.id
-                    for l in wcs.contents:
-                        if l.metadataUrls:
-                            for mu in l.metadataUrls:
-                                if md_id in mu:
-                                    return l # more than one could match, now only first 
-                return True # No layer match, but capabilities successfull
-            except Exception as e:
-                print(f"Error getting WCS capabilities at {url}: {e}")
-                return False
-
-        # case 'csw':
-
-        case 'ogcapi':
-            try:
-                import json
-                from owslib.ogcapi.features import Features
-                if 'collections/' in url:
-                    lname = url.split('collections/').pop().split('/')[0]
-                    url = url.split('collections/')[0]
-                oaf = Features(url)
-                if lname not in [None,'']:
-                    return True
-                else:
-                    col = oaf.collection(lname)
-                    return col
-            except Exception as e:
-                print(f"Error getting collection {lname} at {url}: {e}")
-                return False    
-
-def process_url(url, relevant_links):
-
-    # todo: replace this section wuth the process_ogc_api method
-
+def process_url(url, relevant_links, record):
+    """Process URL and utilize process_ogc_api to get capabilities.
+   
+    Args:
+        url (str): URL to process
+        relevant_links (list): List to store processed URLs and their capabilities
+        record (str): Record ID to use as metadata ID for OGC services
+   
+    Returns:
+        None: Updates relevant_links list in place with (url, capabilities) tuples
+    """
     ogc_services = ['wms', 'wmts', 'wfs', 'wcs', 'csw', 'ows']
-
+   
     # Check if it's an OGC service and determine the service type
     service_type = next((s for s in ogc_services if s in url.lower()), None)
 
-    if service_type: 
+    if service_type:
+        # Convert 'ows' to 'wms' for consistency
         if service_type == 'ows':
             service_type = 'wms'
+           
+        # Parse URL and extract query parameters
         u = urlparse(url)
         query_params = parse_qs(u.query)
 
-        # If this is an OGC URL then fire a getcapabilities request and set service type
+        # If this is an OGC URL then fire a getcapabilities request
         # Keep all other existing parameters
         new_params = query_params.copy()
-        
+       
+        # Parameters to remove for GetCapabilities request
         owsparams = "width,height,bbox,version,crs,layers,format,srs,count,typenames,srsname,outputformat,service,request"
 
+        # Remove OWS parameters
         for p2 in query_params.keys():
             if p2.lower() in owsparams.split(','):
                 del new_params[p2]
 
-        # Add GetCapabilities parameters only if they don't exist
+        # Add GetCapabilities parameters
         new_params['request'] = ['GetCapabilities']
         new_params['service'] = [service_type.upper()]
-        
-        # Construct new URL
-        new_query = urlencode(new_params, doseq=True)
-        # print("New url",parsed_url._replace(query=new_query).geturl())
-        relevant_links.add(u._replace(query=new_query).geturl())
+       
+        # Get layer name from URL parameters
+        layer_name = query_params.get('layers', [None])[0] or query_params.get('typenames', [None])[0]
+       
+        # Construct capabilities URL
+        capabilities_url = u._replace(query=urlencode(new_params, doseq=True)).geturl()
+
+        # Process OGC API with record ID as metadata ID
+        capabilities_result = process_ogc_api(capabilities_url, service_type, layer_name, record)
+       
+        # Store both original URL and capabilities result
+        relevant_links.append((url, capabilities_result))
     else:
-        relevant_links.add(url)
+        # For non-OGC URLs, store with None capabilities
+        relevant_links.append((url, None))
+
+def process_item(item, relevant_links, record):
+    if isinstance(item, dict) and 'href' in item and item['href'] not in [None, '', 'null']:
+        if item['href'].startswith('http'):
+            if 'rel' in item and item['rel'] not in [None,''] and item['rel'].lower() in ['collection', 'self', 'root', 'prev', 'next', 'canonical']:
+                None
+            else:
+                process_url(item['href'], relevant_links, record)
 
 def extract_relevant_links_from_json(json_url):
     try:
@@ -394,60 +331,56 @@ def extract_relevant_links_from_json(json_url):
                 # Get the record ID for this feature
                 record_id = feature.get('id')
                 if record_id:
-                    # Create a temporary set to store links for this feature
-                    feature_links = set()
-                    # Process links array
+                    feature_links = []  
                     for link in feature.get('links', []):
                         process_item(link, feature_links, record_id)
-                    # Add all links from this feature to the map with their record ID
-                    for link in feature_links:
-                        links_map[link] = record_id
-                
+                    # Store both URL and capabilities
+                    for url, capabilities in feature_links:
+                        links_map[url] = {
+                            'record_id': record_id,
+                            'capabilities': capabilities
+                        }
         return links_map
     except Exception as e:
         print(f"Error extracting links from JSON at {json_url}: {e}")
         return {}
-
-def process_item(item, relevant_links, record):
-    if isinstance(item, dict) and 'href' in item and item['href'] not in [None,''] and item['href'].startswith('http') and not item['href'].startswith(base) :
-        if 'rel' in item and item['rel'] not in [None,''] and item['rel'].lower() in ['collection', 'self', 'root', 'prev', 'next', 'canonical']:
-            None
-        else:
-            process_url(item['href'], item.get('type'), item.get('name'), relevant_links, record)
 
 def main():
     start_time = time.time()
     if STOREINDB:
         conn, cur = setup_database()
     url_checker = URLChecker()
-    
+   
     base_url = base + 'collections/' + collection + '/items?offset='
     total_pages, items_per_page = get_pagination_info(catalogue_json_url)
-
-    print('Extracting links from catalogue...')
+   
+    print(f'Extracting links from catalogue (first {total_pages} pages)...')
     url_record_map = {}  # Dictionary to store URL to record_id mapping
 
-    # Process catalogue pages
+    # Process only total_pages number of pages
     for page in range(total_pages):
         print(f"Processing page {page + 1} of {total_pages} at {time.time()-start_time}")
         page_url_map = extract_relevant_links_from_json(f"{base_url}{page * items_per_page}")
         url_record_map.update(page_url_map)
-
+   
     print(f"Found {len(url_record_map)} unique links to check")
-    
+   
     # Check all URLs concurrently
     results = url_checker.check_urls(url_record_map.keys())
-    
+   
     # Process results
     if STOREINDB:
         # print(f"Update database...")
         processed_links = 0
         for result in results:
-            # Get the record_id for this URL
-            record_id = url_record_map[result['url']]
-            if insert_or_update_link(conn, result, record_id) is not None:
+            # Get both record_id and capabilities from the map
+            record_info = url_record_map[result['url']]
+            # Update result with capabilities info
+            result['gis_capabilities'] = record_info['capabilities']
+           
+            if insert_or_update_link(conn, result, record_info['record_id']) is not None:
                 processed_links += 1
-            
+           
         cur.execute("""
             SELECT
                 COUNT(*) as total_checks,
