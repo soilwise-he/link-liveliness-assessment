@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 from lxml import html
 from urllib.parse import urlparse, parse_qs, urlencode
 from concurrent.futures import ThreadPoolExecutor
-from ogc_services import process_ogc_api
+from ogc_services import process_ogc_links
 import psycopg2
 import requests
 import math
@@ -302,7 +302,7 @@ def process_url(url, relevant_links, record):
         capabilities_url = u._replace(query=urlencode(new_params, doseq=True)).geturl()
 
         # Process OGC API with record ID as metadata ID
-        capabilities_result = process_ogc_api(capabilities_url, service_type, layer_name, record)
+        capabilities_result = process_ogc_links(capabilities_url, service_type, layer_name, record)
        
         # Store both original URL and capabilities result
         relevant_links.append((url, capabilities_result))
