@@ -8,6 +8,7 @@ import asyncpg
 import logging
 import os
 from urllib.parse import quote_plus
+from typing import Dict, Any, Union
 
 # Load environment variables from .env file
 load_dotenv()
@@ -43,7 +44,8 @@ class LinkResponse(BaseModel):
     consecutive_failures: Optional[int] = None
     link_type: Optional[str] = None  
     link_size: Optional[int] = None 
-    last_modified: Optional[datetime] = None 
+    last_modified: Optional[datetime] = None
+    gis_capabilities: Optional[Union[Dict[str, Any], str]] = None
 
 class StatusResponse(LinkResponse):
     status_code: Optional[int] = None
@@ -80,7 +82,7 @@ async def fetch_data(query: str, values: dict = {}):
 @app.get('/Redirection_URLs/3xx', response_model=List[StatusResponse])
 async def get_redirection_statuses():
     query = f"""
-        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified,
+        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified, l.gis_capabilities, 
                r.record_id, vh.status_code, vh.is_redirect, vh.error_message, vh.timestamp
         FROM {schema}.links l
         JOIN {schema}.records r ON l.fk_record = r.id
@@ -99,7 +101,7 @@ async def get_redirection_statuses():
 @app.get('/Client_Error_URLs/4xx', response_model=List[StatusResponse])
 async def get_client_error_statuses():
     query = f"""
-        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified,
+        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified, l.gis_capabilities,
                r.record_id, vh.status_code, vh.is_redirect, vh.error_message, vh.timestamp
         FROM {schema}.links l
         JOIN {schema}.records r ON l.fk_record = r.id
@@ -118,7 +120,7 @@ async def get_client_error_statuses():
 @app.get('/Server_Errors_URLs/5xx', response_model=List[StatusResponse])
 async def get_server_error_statuses():
     query = f"""
-        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified,
+        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified, l.gis_capabilities,
                r.record_id, vh.status_code, vh.is_redirect, vh.error_message, vh.timestamp
         FROM {schema}.links l
         JOIN {schema}.records r ON l.fk_record = r.id
@@ -137,7 +139,7 @@ async def get_server_error_statuses():
 @app.get('/status/{item:path}', response_model=List[StatusResponse])
 async def get_status_for_url(item):
     query = f"""
-        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified,
+        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified, l.gis_capabilities,
                r.record_id, vh.status_code, vh.is_redirect, vh.error_message, vh.timestamp
         FROM {schema}.links l
         JOIN {schema}.records r ON l.fk_record = r.id
@@ -156,7 +158,7 @@ async def get_status_for_url(item):
 @app.get('/Timeout_URLs', response_model=List[TimeoutResponse])
 async def get_timeout_urls():
     query = f"""
-        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified,
+        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified, l.gis_capabilities,
                r.record_id, vh.status_code, vh.is_redirect, vh.error_message, vh.timestamp
         FROM {schema}.links l
         JOIN {schema}.records r ON l.fk_record = r.id
@@ -174,7 +176,7 @@ async def get_timeout_urls():
 @app.get('/Deprecated_URLs', response_model=List[LinkResponse])
 async def get_deprecated_urls():
     query = f"""
-        SELECT l.id_link, l.urlname, r.record_id, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified
+        SELECT l.id_link, l.urlname, r.record_id, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified, l.gis_capabilities
         FROM {schema}.links l
         JOIN {schema}.records r ON l.fk_record = r.id
         WHERE l.deprecated IS TRUE

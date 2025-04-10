@@ -135,29 +135,17 @@ export ROOTPATH=/linky
 A CI/CD configuration file is provided in order to create an automated chronological pipeline.
 It is necessary to define the secrets context using GitLab secrets in order to connect to the database.
 
-## Get current URL Status History 
-
-This endpoint returns the history of a specific URL. 
-Let's say we have the status of a specific URL over time 
-
-| id  | url                    | validation_result | timestamp               |
-|-----|------------------------|-------------------|-------------------------|
-| 1   | https://example.com    | 200 OK            | 2023-01-01 10:00:00+00  |
-| 2   | https://wikipedia.com  | 404 Not Found     | 2023-01-01 10:00:05+00  |
-| 3   | https://example.com    | 200 OK            | 2023-01-02 11:00:00+00  |
-| 4   | https://wikipedia.com  | 500 Server Error  | 2023-01-02 11:00:05+00  |
-| 5   | https://wikipedia.com  | 200 OK            | 2023-01-02 11:00:10+00  |
-
-Running the `/Single_url_status_history` endpoint for the 
-https://wikipedia.com and setting limit = 2 it will fetch the following result:
-
-| id  | url                    | validation_result | timestamp               |
-|-----|------------------------|-------------------|-------------------------|
-| 1   | https://wikipedia.com  | 500 Server Error  | 2023-01-02 11:00:05+00  |
-| 2   | https://wikipedia.com  | 404 Not Found     | 2023-01-01 10:00:05+00  |
+## workflow 
+1. Loop through paginated records
+2. Extract URLs from each record
+3. For each URL:
+     |__ If GIS fetch GetCapabilities
+     |__ Store record_id + capabilities 
+4. After all pages, run HTTP checks on all URLs
+5. Merge each result with record_id and capabilities
+6. Output final data
 
 This is the URL's history in descenting order in datetime
-
 
 ## Technological Stack
 

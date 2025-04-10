@@ -4,7 +4,7 @@ from owslib.wfs import WebFeatureService
 from owslib.wcs import WebCoverageService
 from owslib.ogcapi.features import Features
      
-def process_ogc_api(url, ltype, lname, md_id):
+def process_ogc_links(url, ltype, lname, md_id):
     def extract_metadata_urls(urls):
         """Helper to extract metadata URLs"""
         if not urls:
