@@ -5,3 +5,4 @@ asyncpg
 databases
 python-dotenv
 lxml
+owslib
