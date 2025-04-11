@@ -106,7 +106,7 @@ def process_ogc_links(url, ltype, lname, md_id):
                     'bbox': feature.boundingBox if hasattr(feature, 'boundingBox') else None,
                     'crs': list(feature.crsOptions) if hasattr(feature, 'crsOptions') else [],
                     'metadata_urls': extract_metadata_urls(feature.metadataUrls) if hasattr(feature, 'metadataUrls') else [],
-                    'schema': schema.__dict__ if schema else None
+                    'schema': (schema if isinstance(schema, dict) else schema.__dict__) if schema else None
                 }
             except Exception as e:
                 print(f"Error getting WFS capabilities at {url}: {e}")
