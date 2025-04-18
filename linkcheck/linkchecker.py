@@ -167,8 +167,8 @@ def get_pagination_info(url):
 
     # Calculate total pages
     total_pages = math.ceil(number_matched / number_returned)
-    if MAX_PAGES and MAX_PAGES < total_pages:
-        total_pages = MAX_PAGES
+    #if MAX_PAGES and MAX_PAGES < total_pages:
+    #    total_pages = MAX_PAGES
     return total_pages, number_returned
   except requests.exceptions.RequestException as e:
     print(f"Error fetching or parsing JSON data from {url}: {e}")

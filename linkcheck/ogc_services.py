@@ -44,6 +44,7 @@ def process_ogc_links(url, ltype, lname, md_id):
                 return {
                     'service_type': 'wms',
                     'layer_name': layer.name if layer else None,
+                    'queryable': True if (layer and layer.queryable == 1) else False,
                     'layer_all': list(wms.contents),
                     'title': layer.title if layer else None,
                     'abstract': layer.abstract if layer else None,
