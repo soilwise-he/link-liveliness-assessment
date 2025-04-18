@@ -21,12 +21,11 @@ def process_ogc_links(url, ltype, lname, md_id):
 
     match ltype:
         case 'wms':
+            layer = None
             try:
                 wms = WebMapService(url, version='1.3.0')
                 if lname in list(wms.contents):
                     layer = wms.contents[lname]
-                elif len(wms.contents) == 1:
-                    layer = wms.contents[next(iter(wms.contents))]
                 else:
                     # Search by metadata URL
                     for l in wms.contents.items():
@@ -35,17 +34,24 @@ def process_ogc_links(url, ltype, lname, md_id):
                             if any(md_id in url for url in urls):
                                 layer = l
                                 break
-                    else:
-                        return True  # No match but capabilities successful
+                    if not layer:
+                        for k,l in wms.contents.items():
+                            if hasattr(l, 'title') and hasattr(l, 'name') and l.title.lower() == lname.lower():
+                                layer = l
+                                break
+
                 # Convert matched layer to dictionary
                 return {
                     'service_type': 'wms',
-                    'layer_name': layer.name,
-                    'title': layer.title,
-                    'abstract': layer.abstract,
+                    'layer_name': layer.name if layer else None,
+                    'layer_all': list(wms.contents),
+                    'title': layer.title if layer else None,
+                    'abstract': layer.abstract if layer else None,
                     'keywords': list(layer.keywords) if hasattr(layer, 'keywords') else [],
                     'bbox': layer.boundingBox if hasattr(layer, 'boundingBox') else None,
-                    'crs': list(layer.crsOptions) if hasattr(layer, 'crsOptions') else [],
+                    'crs4326': ('EPSG:4326' in list(layer.crsOptions) if hasattr(layer, 'crsOptions') else []),
+                    'crs3857': ('EPSG:3857' in list(layer.crsOptions) if hasattr(layer, 'crsOptions') else []),
+                    # 'crs': ,
                     'styles': list(layer.styles.keys()) if hasattr(layer, 'styles') else [],
                     'metadata_urls': extract_metadata_urls(layer.metadataUrls) if hasattr(layer, 'metadataUrls') else []
                 }
@@ -55,18 +61,24 @@ def process_ogc_links(url, ltype, lname, md_id):
 
         case 'wmts':
             try:
+                layer = None
                 wmts = WebMapTileService(url)
                 if lname in list(wmts.contents):
                     layer = wmts.contents[lname]
                 elif len(wmts.contents) == 1:
                     layer = list(wmts.contents.values())[0]
                 else:
-                    return True
+                    for k,l in wmts.contents.items():
+                        if hasattr(l, 'title') and hasattr(l, 'name') and l.title.lower() == lname.lower():
+                            layer = l
+                            break
+                    
 
                 return {
                     'service_type': 'wmts',
-                    'layer_name': layer.name,
-                    'title': layer.title,
+                    'layer_name': layer.name if layer else None,
+                    'layer_all': list(wmts.contents),
+                    'title': layer.title if layer else None,
                     'abstract': layer.abstract if hasattr(layer, 'abstract') else None,
                     'bbox': layer.boundingBoxWGS84 if hasattr(layer, 'boundingBoxWGS84') else None,
                     'formats': list(layer.formats) if hasattr(layer, 'formats') else [],
@@ -94,17 +106,18 @@ def process_ogc_links(url, ltype, lname, md_id):
                                 feature = f
                                 schema = wfs.get_schema(f.id)
                                 break
-                    else:
-                        return True
+
 
                 return {
                     'service_type': 'wfs',
-                    'feature_name': feature.id,
-                    'title': feature.title,
+                    'layer_name': feature.id if feature else None,
+                    'layer_all': list(wfs.contents),
+                    'title': feature.title if feature else None,
                     'abstract': feature.abstract if hasattr(feature, 'abstract') else None,
                     'keywords': list(feature.keywords) if hasattr(feature, 'keywords') else [],
                     'bbox': feature.boundingBox if hasattr(feature, 'boundingBox') else None,
-                    'crs': list(feature.crsOptions) if hasattr(feature, 'crsOptions') else [],
+                    'crs4326': ('EPSG:4326' in list(feature.crsOptions) if hasattr(feature, 'crsOptions') else []),
+                    'crs3857': ('EPSG:3857' in list(feature.crsOptions) if hasattr(feature, 'crsOptions') else []),
                     'metadata_urls': extract_metadata_urls(feature.metadataUrls) if hasattr(feature, 'metadataUrls') else [],
                     'schema': (schema if isinstance(schema, dict) else schema.__dict__) if schema else None
                 }
@@ -131,8 +144,9 @@ def process_ogc_links(url, ltype, lname, md_id):
 
                 return {
                     'service_type': 'wcs',
-                    'coverage_name': coverage.id,
-                    'title': coverage.title,
+                    'layer_name': coverage.id if coverage else None,
+                    'layer_all': list(wcs.contents), 
+                    'title': coverage.title if coverage else None,
                     'abstract': coverage.abstract if hasattr(coverage, 'abstract') else None,
                     'keywords': list(coverage.keywords) if hasattr(coverage, 'keywords') else [],
                     'bbox': coverage.boundingBox if hasattr(coverage, 'boundingBox') else None,
@@ -146,25 +160,31 @@ def process_ogc_links(url, ltype, lname, md_id):
         case 'ogcapi':
             try:
                 if 'collections/' in url:
-                    lname = url.split('collections/').pop().split('/')[0]
+                    lname2 = url.split('collections/').pop().split('/')[0].split('?')[0].split('#')[0]
                     url = url.split('collections/')[0]
+                if lname2 not in [None,'']:
+                    lname = lname2
                 oaf = Features(url)
-               
-                if lname not in [None, '']:
-                    collection = oaf.collection(lname)
-                    return {
-                        'service_type': 'ogcapi',
-                        'collection_id': collection.id if hasattr(collection, 'id') else None,
-                        'title': collection.title if hasattr(collection, 'title') else None,
-                        'description': collection.description if hasattr(collection, 'description') else None,
-                        'links': [
-                            {'href': link.href, 'rel': link.rel, 'type': link.type}
-                            for link in collection.links if hasattr(collection, 'links')
-                        ],
-                        'extent': collection.extent if hasattr(collection, 'extent') else None,
-                        'crs': collection.crs if hasattr(collection, 'crs') else None
-                    }
-                return True
+                lyrs = oaf.collections()['collections']
+                ls_lyrs = [l['id'] for l in lyrs]
+                collection = None
+                if len(ls_lyrs) == 1:
+                    collection = lyrs[0]
+                else:    
+                    for l in lyrs:
+                        if lname not in [None, ''] and (lname == l.get('id','') or lname.lower() == l.get('title','')):
+                            collection = l
+                            break
+                        # todo: check metadata link matches md_id
+                return {
+                    'service_type': 'ogcapi',
+                    'layer_name': collection.id if hasattr(collection, 'id') else None,
+                    'layer_all': ls_lyrs,
+                    'title': collection.title if hasattr(collection, 'title') else None,
+                    'abstract': collection.description if hasattr(collection, 'description') else None,
+                    'bbox': collection.extent if hasattr(collection, 'extent') else None,
+                    'crs': collection.crs if hasattr(collection, 'crs') else None
+                }
             except Exception as e:
                 print(f"Error getting OGC API collection at {url}: {e}")
                 return False

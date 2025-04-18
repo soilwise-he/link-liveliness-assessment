@@ -17,6 +17,7 @@ MAX_FAILURES = 10 # Used to mark deprecated url's
 TIMEOUT = 5  # Url timeout
 USERAGENT = 'Soilwise Link Liveliness assessment v0.1.0' # Send as user-agent with every request
 MAX_WORKERS = 5  # Threads used for url checking
+#MAX_PAGES = 2 # Limit the run to a subset or pages
 
 # Load environment variables from .env file
 load_dotenv()
@@ -166,6 +167,8 @@ def get_pagination_info(url):
 
     # Calculate total pages
     total_pages = math.ceil(number_matched / number_returned)
+    if MAX_PAGES and MAX_PAGES < total_pages:
+        total_pages = MAX_PAGES
     return total_pages, number_returned
   except requests.exceptions.RequestException as e:
     print(f"Error fetching or parsing JSON data from {url}: {e}")
