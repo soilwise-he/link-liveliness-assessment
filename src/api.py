@@ -199,6 +199,7 @@ async def get_url_status_history(
             l.link_type, 
             l.link_size,
             l.last_modified,
+            l.gis_capabilities,
             vh.status_code,
             vh.is_redirect,
             vh.error_message,

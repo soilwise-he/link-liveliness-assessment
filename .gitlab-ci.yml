@@ -61,7 +61,7 @@ Link-check-dev:
     - export POSTGRES_USER=$POSTGRES_USER_TEST
     - export POSTGRES_PASSWORD=$POSTGRES_PASSWORD_TEST
     - export POSTGRES_SCHEMA=linky
-    - export OGCAPI_URL=https://soilwise-he.containers.wurnet.nl/cat/
+    - export OGCAPI_URL=https://repository.soilwise-he.eu/cat/
     - pip3 install -r linkcheck/requirements.txt
     - python3 linkcheck/linkchecker.py
   rules:
