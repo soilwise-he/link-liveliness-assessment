@@ -17,7 +17,7 @@ MAX_FAILURES = 10 # Used to mark deprecated url's
 TIMEOUT = 5  # Url timeout
 USERAGENT = 'Soilwise Link Liveliness assessment v0.1.0' # Send as user-agent with every request
 MAX_WORKERS = 5  # Threads used for url checking
-#MAX_PAGES = 2 # Limit the run to a subset or pages
+MAX_PAGES = 2 # Limit the run to a subset or pages
 
 # Load environment variables from .env file
 load_dotenv()
@@ -25,8 +25,11 @@ load_dotenv()
 STOREINDB = os.environ.get("STOREINDB") or True
 
 # base catalog
-base = os.environ.get("OGCAPI_URL") or "https://demo.pycsw.org/gisdata"
-collection = os.environ.get("OGCAPI_COLLECTION") or "metadata:main"
+# base = os.environ.get("OGCAPI_URL") or "https://demo.pycsw.org/gisdata"
+# collection = os.environ.get("OGCAPI_COLLECTION") or "metadata:main"
+
+base = 'https://repository.soilwise-he.eu/cat/'
+collection = 'metadata:main'
 
 # format catalogue path with f-string
 catalogue_json_url= f"{base}/collections/{collection}/items?f=json"
@@ -167,8 +170,8 @@ def get_pagination_info(url):
 
     # Calculate total pages
     total_pages = math.ceil(number_matched / number_returned)
-    #if MAX_PAGES and MAX_PAGES < total_pages:
-    #    total_pages = MAX_PAGES
+    if MAX_PAGES and MAX_PAGES < total_pages:
+        total_pages = MAX_PAGES
     return total_pages, number_returned
   except requests.exceptions.RequestException as e:
     print(f"Error fetching or parsing JSON data from {url}: {e}")
@@ -257,6 +260,64 @@ def insert_or_update_link(conn, url_result, record_id):
         print(f"Database error processing URL {url_result['url']}: {str(e)}")
         return None
 
+def detect_service_type(url, protocol=None):
+    if not url:
+        return None
+    
+    url_lower = url.lower()
+    
+    # Check for OGC API patterns in URL
+    is_ogcapi_url = any(pattern in url_lower for pattern in ['/ogc/features', '/ogcapi', '/api/features'])
+    
+    # First check protocol if provided otherwise check URL
+    if protocol:
+        protocol_lower = protocol.lower()
+        
+        # Direct OGC API protocol
+        if 'ogc api' in protocol_lower:
+            return 'ogcapi'
+            
+        # Protocol specifies WFS but URL suggests OGC API
+        elif 'wfs' in protocol_lower and is_ogcapi_url:
+            print(f"URL suggests OGCAPI but protocol says WFS, using 'ogcapi' instead for: {url}")
+            return 'ogcapi'
+            
+        # Standard OGC service types
+        elif 'wms' in protocol_lower:
+            return 'wms'
+        elif 'wmts' in protocol_lower:
+            return 'wmts'
+        elif 'wfs' in protocol_lower:
+            return 'wfs'
+        elif 'wcs' in protocol_lower:
+            return 'wcs'
+        elif 'ows' in protocol_lower:
+            return 'wms'  # Default OWS to WMS
+    
+    if is_ogcapi_url:
+        return 'ogcapi'
+    
+    # Check for service parameter in query string
+    parsed_url = urlparse(url)
+    query_params = parse_qs(parsed_url.query)
+    if 'service' in query_params:
+        service = query_params['service'][0].lower()
+        if service in ['wms', 'wmts', 'wfs', 'wcs']:
+            return service
+    
+    # Check URL path for service indicators
+    if '/wms' in url_lower:
+        return 'wms'
+    elif '/wmts' in url_lower:
+        return 'wmts'
+    elif '/wfs' in url_lower:
+        return 'wfs'
+    elif '/wcs' in url_lower:
+        return 'wcs'
+    
+    # No clear indication found
+    return None
+
 def process_url(link, relevant_links, record):
     """Process URL and utilize process_ogc_api to get capabilities.
    
@@ -271,66 +332,33 @@ def process_url(link, relevant_links, record):
     url = link.get('href','')
     protocol = link.get('protocol','')
     layer_name = link.get('name','')
+    rel = link.get('rel','')
+    name = link.get('name','')
 
     if url.startswith('http'):
-        ogc_services = ['wms', 'wmts', 'wfs', 'wcs', 'csw', 'ows']
-        skipOGC = False
-        if ('thumbnail' in protocol):
-            skipOGC = True
-        
-        # if service type is set on link
-        if not skipOGC:
-            service_type = next((s for s in ogc_services if s in protocol.lower()), None)
-        # Else check if it's an OGC service and determine the service type
-        # removed this part, because it gives to much false positives, 
-        # we could use it to identify if something happens to be an ogc service
-        # but it should never cause a link-broken, if the link itself is already tested to be ok, 
-        # we could run it in cases that the linkage already was found broken
-        #if not skipOGC and service_type in [None,'']:
-        #    # check if 'geoserver/wms?re' or ?request=wms is in url 
-        #    service_type = next((s for s in ogc_services if (f'/{s}' in url.lower() or f'={s}' in url.lower())), None)
-
-        if not skipOGC and service_type not in [None,'']:
-            # Convert 'ows' to 'wms' for consistency
-            if service_type == 'ows':
-                service_type = 'wms'
-            
-            print('ows:',service_type,url)
-
-            # # Parse URL and extract query parameters
-            # u = urlparse(url)
-            # query_params = parse_qs(u.query)
-
-            # # If this is an OGC URL then fire a getcapabilities request
-            # # Keep all other existing parameters
-            # new_params = query_params.copy()
-        
-            # # Parameters to remove for GetCapabilities request
-            # #owsparams = "width,height,bbox,version,crs,layers,format,srs,count,typenames,srsname,outputformat,service,request"
-
-            # # Remove OWS parameters
-            # for p2 in query_params.keys():
-            #     if p2.lower() in owsparams.split(','):
-            #         del new_params[p2]
-
-            # # Add GetCapabilities parameters
-            # new_params['request'] = ['GetCapabilities']
-            # new_params['service'] = [service_type.upper()]
-        
-            # # Get layer name from URL parameters
-            # layer_name = query_params.get('layers', [None])[0] or query_params.get('typenames', [None])[0]
-        
-            # # Construct capabilities URL
-            # capabilities_url = u._replace(query=urlencode(new_params, doseq=True)).geturl()
-
-            # Process OGC API with record ID as metadata ID
-            capabilities_result = process_ogc_links(url, service_type, layer_name, record)
-        
-            # Store both original URL and capabilities result
-            relevant_links.append((url, capabilities_result))
-        else:
-            # For non-OGC URLs, store with None capabilities
+        if ('thumbnail' in protocol.lower() or 
+            'image' in protocol.lower() or 
+            rel == 'preview' or 
+            name == 'preview'):
+            # Store as a non-OGC URL
             relevant_links.append((url, None))
+            return
+        
+        # Use the enhanced detect_service_type function that considers both protocol and URL
+        service_type = detect_service_type(url, protocol)
+        
+        # if service_type:
+        #     print(f'Detected service: {service_type} for URL: {url}')
+        
+        # Process OGC API with record ID as metadata ID
+        # Pass the protocol to process_ogc_links for additional context
+        capabilities_result = process_ogc_links(url, service_type, layer_name, record)
+        
+        # Store both original URL and capabilities result
+        relevant_links.append((url, capabilities_result))
+    else:
+        # For non-OGC URLs, store with None capabilities
+        relevant_links.append((url, None))
 
 def process_item(item, relevant_links, record):
     if isinstance(item, dict) and 'href' in item and item['href'] not in [None, '', 'null']:
