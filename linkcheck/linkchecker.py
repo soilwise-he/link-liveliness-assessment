@@ -17,7 +17,7 @@ MAX_FAILURES = 10 # Used to mark deprecated url's
 TIMEOUT = 5  # Url timeout
 USERAGENT = 'Soilwise Link Liveliness assessment v0.1.0' # Send as user-agent with every request
 MAX_WORKERS = 5  # Threads used for url checking
-MAX_PAGES = 2 # Limit the run to a subset or pages
+# MAX_PAGES = 2 # Limit the run to a subset or pages
 
 # Load environment variables from .env file
 load_dotenv()
@@ -25,11 +25,8 @@ load_dotenv()
 STOREINDB = os.environ.get("STOREINDB") or True
 
 # base catalog
-# base = os.environ.get("OGCAPI_URL") or "https://demo.pycsw.org/gisdata"
-# collection = os.environ.get("OGCAPI_COLLECTION") or "metadata:main"
-
-base = 'https://repository.soilwise-he.eu/cat/'
-collection = 'metadata:main'
+base = os.environ.get("OGCAPI_URL") or "https://demo.pycsw.org/gisdata"
+collection = os.environ.get("OGCAPI_COLLECTION") or "metadata:main"
 
 # format catalogue path with f-string
 catalogue_json_url= f"{base}/collections/{collection}/items?f=json"
@@ -170,8 +167,8 @@ def get_pagination_info(url):
 
     # Calculate total pages
     total_pages = math.ceil(number_matched / number_returned)
-    if MAX_PAGES and MAX_PAGES < total_pages:
-        total_pages = MAX_PAGES
+    # if MAX_PAGES and MAX_PAGES < total_pages:
+    #     total_pages = MAX_PAGES
     return total_pages, number_returned
   except requests.exceptions.RequestException as e:
     print(f"Error fetching or parsing JSON data from {url}: {e}")
