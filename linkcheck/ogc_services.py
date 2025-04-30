@@ -24,7 +24,7 @@ def process_ogc_links(url, ltype, lname, md_id):
             layer = None
             try:
                 wms = WebMapService(url, version='1.3.0')
-                if lname in list(wms.contents):
+                if lname is not None and lname in list(wms.contents):
                     layer = wms.contents[lname]
                 else:
                     # Search by metadata URL
