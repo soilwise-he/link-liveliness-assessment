@@ -17,7 +17,7 @@ MAX_FAILURES = 10 # Used to mark deprecated url's
 TIMEOUT = 5  # Url timeout
 USERAGENT = 'Soilwise Link Liveliness assessment v0.1.0' # Send as user-agent with every request
 MAX_WORKERS = 5  # Threads used for url checking
-# MAX_PAGES = 2 # Limit the run to a subset or pages
+# MAX_PAGES = 5 # Limit the run to a subset or pages
 
 # Load environment variables from .env file
 load_dotenv()
@@ -168,7 +168,7 @@ def get_pagination_info(url):
     # Calculate total pages
     total_pages = math.ceil(number_matched / number_returned)
     # if MAX_PAGES and MAX_PAGES < total_pages:
-    #     total_pages = MAX_PAGES
+    #    total_pages = MAX_PAGES
     return total_pages, number_returned
   except requests.exceptions.RequestException as e:
     print(f"Error fetching or parsing JSON data from {url}: {e}")
@@ -360,8 +360,9 @@ def process_url(link, relevant_links, record):
 def process_item(item, relevant_links, record):
     if isinstance(item, dict) and 'href' in item and item['href'] not in [None, '', 'null']:
         if item['href'].startswith('http'):
-            if 'rel' in item and item['rel'] not in [None,''] and item['rel'].lower() in ['collection', 'self', 'root', 'prev', 'next', 'canonical']:
-                None
+            rel_value = item.get('rel', '').lower() if item.get('rel') else ''
+            if rel_value in ['collection', 'self', 'root', 'prev', 'next', 'canonical']:
+                return
             else:
                 process_url(item, relevant_links, record)
 
