@@ -150,7 +150,15 @@ def setup_database():
    
     for table in tables:
         cur.execute(table)
+        
+    # Create indexes for better performance
+    indexes = [
+        "CREATE INDEX IF NOT EXISTS idx_validation_latest ON validation_history (fk_link, timestamp DESC)"
+    ]
    
+    for index in indexes:
+        cur.execute(index)
+        
     conn.commit()
     return conn, cur
 
@@ -168,7 +176,7 @@ def get_pagination_info(url):
     # Calculate total pages
     total_pages = math.ceil(number_matched / number_returned)
     # if MAX_PAGES and MAX_PAGES < total_pages:
-    #    total_pages = MAX_PAGES
+    #     total_pages = MAX_PAGES
     return total_pages, number_returned
   except requests.exceptions.RequestException as e:
     print(f"Error fetching or parsing JSON data from {url}: {e}")
