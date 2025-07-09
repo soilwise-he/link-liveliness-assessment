@@ -9,6 +9,7 @@ import logging
 import os
 from urllib.parse import quote_plus
 from typing import Dict, Any, Union
+from linkcheck.on_demand_url_checker import AsyncURLChecker, diagnose_link_status
 
 # Load environment variables from .env file
 load_dotenv()
@@ -62,6 +63,24 @@ class TimeoutResponse(LinkResponse):
     error_message: Optional[str] = None
     timestamp: datetime
     
+    # New response models for on-demand checking
+class LinkCheckRequest(BaseModel):
+    url: str
+    check_ogc_capabilities: Optional[bool] = False
+
+class LinkCheckResponse(BaseModel):
+    url: str
+    status_code: Optional[int] = None
+    valid: bool
+    content_type: Optional[str] = None
+    content_size: Optional[int] = None
+    error: Optional[str] = None
+    is_redirect: Optional[bool] = None
+    final_url: Optional[str] = None
+    gis_capabilities: Optional[dict] = None
+    diagnosis: str
+    timestamp: datetime
+    
 # Define status lists
 REDIRECTION_STATUSES = [301, 302, 304, 307, 308]
 CLIENT_ERROR_STATUSES = [400, 401, 403, 404, 405, 409]
@@ -77,6 +96,33 @@ async def fetch_data(query: str, values: dict = {}):
     except Exception as e:
         logging.error(f"Database query failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Database query failed")
+
+# Endpoint to check a single URL on-demand
+@app.post('/check-url', response_model=LinkCheckResponse)
+async def check_single_url(request: LinkCheckRequest):
+    """
+    Check a single URL on-demand without storing results in database.
+    """
+    # Perform URL check
+    async with AsyncURLChecker() as checker:
+        result = await checker.check_url(request.url, request.check_ogc_capabilities)
+    
+    gis_cap = result.get('gis_capabilities')
+    print(f"GIS Capabilities: {gis_cap}")
+    
+    return LinkCheckResponse(
+        url=request.url,
+        status_code=result.get('status_code'),
+        valid=result['valid'],
+        content_type=result.get('content_type'),
+        content_size=result.get('content_size'),
+        error=result.get('error'),
+        is_redirect=result.get('is_redirect'),
+        final_url=result.get('final_url'),
+        gis_capabilities=result.get('gis_capabilities'),
+        diagnosis=diagnose_link_status(result),
+        timestamp=datetime.now()
+    )
 
 # Endpoint to retrieve data with redirection statuses
 @app.get('/Redirection_URLs/3xx', response_model=List[StatusResponse])
