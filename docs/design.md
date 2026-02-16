@@ -83,6 +83,7 @@ Additionally, the tool enhances link analysis by identifying various metadata at
 4.	**Timeout management:** Allows the identification of URLs that exceed a timeout threshold which can be set manually as a parameter in linkchecker's properties. 
 5.	**Availability monitoring:** When run periodically, the tool builds a history of availability for each URL, enabling users to view the status of links over time. 
 6.	OWS services (WMS, WFS, WCS, CSW) typically return a HTTP 500 error when called without the necessary parameters. A handling for these services has been applied in order to detect and include the necessary parameters before being checked.
+7.	**On demand URL validation** Enables real-time checking of individual URLs without storing results in the database.Returns immediate feedback including status, content metadata, redirect information and diagnostic messages explaining link issues. Particularly useful for pre-validating links before processing in other tools, avoiding unnecessary operations on broken URLs. Utilized in [spatial-metadata-extractor](https://github.com/soilwise-he/metadata-augmentation/tree/spatial-metadata-extractor/spatial-metadata-extractor) to skip processing broken URLs
 
 ### Component Diagrams
 ```mermaid
@@ -177,6 +178,10 @@ The API has been extended to include the newly tracked metadata fields:
 - **link_size**: Indicates the size of the resource in bytes
 - **last_modified**: Provides the timestamp when the resource was modified
 
+**New Endpoint:**
+- POST **/check-url**: On-demand URL validation endpoint that accepts a URL and optional check_ogc_capabilities parameter.
+  Returns real-time validation results without database storage, including diagnostic messages to help users understand link issues.
+  
 ## Next Steps
 We plan to enhance the link liveliness assesment tool to include geospatial attributes such as field details, and spatial 
 information from various data formats (e.g., GeoTIFF, Shapefile, CSV).
