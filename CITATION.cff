@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+title: SoilWise-he Link Liveliness Assessment
+abstract: A component of the SoilWise Repository that monitors and validates the links contained within metadata harvested for the SoilWise Repository (SWR).
+version: 1.1.4
+date-released: 2025-02-01
+authors:
+  - given-names: Vasilis
+    family-names: Gkoles
+    affiliation: Neuropublic S.A.
+  - given-names: Paul
+    family-names: Van Genuchten
+    affiliation: Wageningen University
+repository-code: https://github.com/soilwise-he/link-liveliness-assessment
+keywords:
+  - link validation
+  - metadata
+  - soil
+  - OGC
+  - SoilWise
+funding:
+  - name: European Union HORIZON Innovation Actions 2022
+    grant-number: "101112838"

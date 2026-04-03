@@ -1,180 +1,161 @@
-# OGC API - Records; link liveliness assessment tool
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.14923790.svg)](https://doi.org/10.5281/zenodo.14923790)
 
-## Overview
+# SoilWise-he Link Liveliness Assessment
 
-The linkchecker component is designed to evaluate the validity and accuracy of links within metadata records in a [OGC API - Records](https://ogcapi.ogc.org/records/) based API. 
+The SoilWise-he project aims to develop an open access knowledge and data metadata catalogue to safeguard soils. This repository contains the Link Liveliness Assessment (LLA) component, which monitors and validates the links contained within metadata harvested for the SoilWise Repository (SWR).
 
-A component which evaluates for a set of metadata records, if:
+## Features
+- **Link validation** — Checks each link for availability and collects metadata such as file format, size, and last modification date
+- **Broken link categorization** — Classifies broken links by error type: Redirection, Client, or Server errors
+- **Deprecated link handling** — Excludes links from future checks after 10 consecutive failures
+- **OWS service support** — Applies dedicated handling for OGC web services (WMS, WFS, WCS, and CSW) by detecting their type and quering them with the required parameters aviding treating them as broken links.
+- **On-demand validation** — Supports ad-hoc link checks that return instant results without writing to the database
+- **Availability history** — Builds a status history for each URL when run periodically
 
-- the links to external sources are valid
-- the links within the repository are valid
-- link metadata represents accurately the resource
+## Installation
 
-The component either returns a http status: 200 (ok), 401 (non autorized), 404 (not found), 500 (server error)
+### Using Docker (recommended)
 
-The component runs an evaluation for a single resource at request, or runs tests at intervals providing a history of availability
+1. Clone this repository:
+   ```bash
+   git clone https://github.com/soilwise-he/link-liveliness-assessment.git
+   cd link-liveliness-assessment
+   ```
 
-A link either points to:
+2. Create your environment file and add your database credentials:
+   ```bash
+      cp .env .env
+      # Edit .env with your PostgreSQL credentials and configuration
+   ```
 
-- another metadata record
-- a downloadable instance (pdf/zip/sqlite) of the resource
-- an API
-
-If endpoint is API, some sanity checks can be performed on the API:
-
-- Identify if the API adopted any API-standard
-- If an API standard is adopted, does the API support basic operations of that API
-  
-The benefit of latter is that it provides more information then a simple ping to the index page of the API, typical examples of standardised API's are SOAP, GraphQL, SPARQL, OpenAPI, WMS, WFS
-
-The results of the validation can be extracted via an API. The API is based on the [fastapi framework](https://fastapi.tiangolo.com/) and can be deployed using a docker container. Or run locally with python
-
+3. Build and start the service using Docker:
+   ```bash
+   docker-compose up --build
+   ```
+### Local setup
+```bash
+pip install -r requirements.txt
 ```
-python3 -m uvicorn api:app --reload --host 0.0.0.0 --port 8000
+Then set up your `.env` file and ensure PostgreSQL is running and accessible.
+
+## Usage
+
+The LLA component runs automatically as a **weekly CI/CD pipeline**. It can also be triggered manually or used via its FastAPI endpoints.
+
+### Available endpoints
+
+**Check a specific URL on-demand** (no database storage):
+```bash
+curl -X POST http://<host>:<port>:/check-url \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com/dataset", "check_ogc_capabilities": false}'
+```
+Returns status code, content type, file size, redirect info, and a diagnostic message.
+
+**Query broken links by error type:**
+```bash
+curl http://<host>:<port>:/Redirection_URLs/3xx
+curl http://<host>:<port>:/Client_Error_URLs/4xx
+curl http://<host>:<port>:/Server_Errors_URLs/5xx
+curl http://<host>:<port>:/Timeout_URLs
 ```
 
-***Sample API response*** 
+**Check the status of a specific URL:**
+```bash
+curl http://<host>:<port>:/status/https://example.com
 ```
-    {
-        "id": 25,
-        "urlname": "https://demo.pycsw.org/gisdata/collections/metadata:main/queryables",
-        "parent_urls": [
-        "https://demo.pycsw.org/gisdata/collections?f=html"
-        ],
-        "status": "200 OK",
-        "result": "",
-        "info": "True",
-        "warning": "",
-        "deprecated": null
+
+**View the full validation history of a URL:**
+```bash
+curl "http://<host>:<port>:/URL_status_history?url=https://example.com/dataset&limit=100"
+```
+
+**List all deprecated URLs:**
+```bash
+curl http://<host>:<port>:/Deprecated_URLs
+```
+
+The response includes status code, content metadata, redirect information, and diagnostic messages.
+### API fields
+
+| Field | Description |
+|---|---|
+| `link_type` | File format of the resource (e.g., `image/jpeg`, `application/pdf`) |
+| `link_size` | Size of the resource in bytes |
+| `last_modified` | Timestamp of the resource's last modification |
+
+### Main Component Diagram
+```mermaid
+flowchart LR
+    H["Harvester"]-- "writes" -->MR[("Record Table")]
+    MR-- "reads" -->LAA["Link Liveliness Assessment"]
+    MR-- "reads" -->CA["Catalogue"]
+    LAA-- "writes" -->LLAL[("Links Table")]
+    LAA-- "writes" -->LLAVH[("Validation History Table")]
+    CA-- "reads" -->API["API"]
+    LLAL-- "writes" -->API
+    LLAVH-- "writes" -->API
+```
+
+### Database design
+```mermaid
+classDiagram
+    Links <|-- Validation_history
+    Links <|-- Records
+    Links : +Int ID
+    Links : +Int fk_records
+    Links : +String Urlname
+    Links : +String deprecated
+    Links : +String link_type
+    Links : +Int link_size
+    Links : +DateTime last_modified
+    Links : +String Consecutive_failures
+    class Records{
+    +Int ID
+    +String Records
+    }
+    class Validation_history{
+      +Int ID
+      +Int fk_link
+      +String Statuscode
+     +String isRedirect
+     +String Errormessage
+     +Date Timestamp
     }
 ```
 
+## Additional Information
 
-## Key Features
+### Architecture
 
-1. **Link validation**: 
-Returns HTTP status codes for each link, along with other important information such as the parent URL, any warnings, and the date and time of the test.
-![Fast API link_status](./images/link_status.png)
-2. **Broken link categorization**:
-Identifies and categorizes broken links based on status codes, including Redirection Errors, Client Errors, and Server Errors.
-![Link categorization enpoint](./images/categorization.png)
-3. **Deprecated links identification**: 
-Flags links as deprecated if they have failed for X consecutive tests, in our case X equals to 10. 
-Deprecated links are excluded from future tests to optimize performance.
-![Fast API deprecated endpoint](./images/deprecated.png)
-4. **Timeout management**: 
-Allows the identification of URLs that exceed a timeout threshold which can be set manually as a parameter in linkchecker's properties.
-![Fast API timeout enpoint](./images/timeouts.png)
-5. **Availability monitoring**:
-When run periodically, the tool builds a history of availability for each URL, enabling users to view the status of links over time.
-![Link validation enpoint](./images/val_history.png)
-6. **OWS services** (WMS, WFS, WCS, CSW) typically return a HTTP 500 error when called without the necessary parameters. A handling for these services has been applied in order to detect and include the necessary parameters before being checked. 
+The LLA component is built with the following stack:
 
+| Technology | Role |
+|---|---|
+| Python | Linkchecker integration, API development, database interactions |
+| PostgreSQL | Primary database for links and validation history |
+| FastAPI | REST API with auto-generated Swagger documentation |
+| Docker | Containerized deployment |
+| CI/CD | Automated weekly pipeline runs |
 
-## Run validation locally
+### Database Design
 
-A database connection needs to be set up. You can configure the database connection in a .env file (or set environment variables).
+**Links table** — stores URL metadata per record: `ID`, `fk_records`, `Urlname`, `deprecated`, `link_type`, `link_size`, `last_modified`, `Consecutive_failures`
 
-```
-OGCAPI_URL=https://example.com
-OGCAPI_COLLECTION=example
-POSTGRES_HOST=example.com
-POSTGRES_PORT=5432
-POSTGRES_DB=postgres
-POSTGRES_SCHEMA=linky
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=******
-```
+**Validation_history table** — stores per-check results: `ID`, `fk_link`, `Statuscode`, `isRedirect`, `Errormessage`, `Timestamp`
 
-Install requirements
+**Records table** — source metadata records: `ID`, `Records`
 
-```
-pip3 install -r requirements.txt
-```
+### Key Design Decisions
 
-Run the validation
+- Only links in the `ogc-api:records` links section are tested (not links embedded in abstracts) to avoid redundant checks across pages.
+- OGC OWS services are handled with a dedicated script that appends required parameters before validation.
+- DOI and other facade links are followed through to their target page, allowing the tool to understand the DOI-to-resource relationship.
+- Links that fail repeatedly are marked as deprecated and excluded from future runs to optimise performance.
+- Each link is associated with the record(s) that reference it, enabling targeted notifications when a broken link is found.
 
-```
-python3 linkchecker.py 
-```
+---
 
-## Run API locally
+## SoilWise-he Project
 
-To run the FastAPI locally run 
-
-```
-python3 -m uvicorn api:app --reload --host 0.0.0.0 --port 8000 
-```
-The FastAPI service runs on: [http://127.0.0.1:8000/docs]
-
-To view the service of the FastAPI on [http://127.0.0.1:8000/docs]
-
-## Container Deployment
-
-Set environment variables in Dockerfile to enable database connection.
-
-Run the following command:
-
-The app can be deployed as a container. 
-A docker-compose file has been implemented.
-
-Run ***docker-compose up*** to run the container
-
-## Deploy `linky` at a path
-
-You can set `ROOTPATH` env var to run the api at a path (default is at root)
-
-```
-export ROOTPATH=/linky
-```
-
-## CI/CD
-
-A CI/CD configuration file is provided in order to create an automated chronological pipeline.
-It is necessary to define the secrets context using GitLab secrets in order to connect to the database.
-
-## workflow 
-1. Loop through paginated records
-2. Extract URLs from each record
-3. For each URL:
-     |__ If GIS fetch GetCapabilities
-     |__ Store record_id + capabilities 
-4. After all pages, run HTTP checks on all URLs
-5. Merge each result with record_id and capabilities
-6. Output final data
-
-This is the URL's history in descenting order in datetime
-
-## Technological Stack
-
-1. **Core Language**:
-   - Python: Used for the linkchecker, API, and database interactions.
-
-2. **Database**:
-   - PostgreSQL: Utilized for storing and managing information.
-
-3. **Backend Framework**:
-   - FastAPI: Employed to create and expose REST API endpoints, utilizing its efficiency and auto-generated components like Swagger.
-
-4. **Containerization**:
-   - Docker: Used to containerize the linkchecker application, ensuring deployment and execution across different environments.
-
-## About OGC API - records
-
-OGC is in the process of adopting the [OGC API - Records](https://github.com/opengeospatial/ogcapi-records) specification. 
-A standardised API to interact with Catalogues. The specification includes a datamodel for metadata. 
-This tool assesses the linkage section of any record in an OGC API - Records.
- 
-Set the endpoint to be analysed as 2 environment variables
-
-```
-export OGCAPI_URL=https://repository.soilwise-he.eu/cat/
-export OGCAPI_COLLECTION=metadata:main
-```
-
-## Soilwise-he project
-
-This work has been initiated as part of the Soilwise-he project. 
-The project receives funding from the European Union’s HORIZON Innovation Actions 2022 under grant agreement No. 101112838.
+This work has been initiated as part of the [SoilWise-he](https://soilwise-he.eu) project. The project receives funding from the European Union's HORIZON Innovation Actions 2022 under grant agreement No. 101112838. Views and opinions expressed are however those of the author(s) only and do not necessarily reflect those of the European Union or Research Executive Agency. Neither the European Union nor the granting authority can be held responsible for them.
