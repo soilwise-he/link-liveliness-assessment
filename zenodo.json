@@ -1,0 +1,46 @@
+{
+  "title": "SoilWise-he Link Liveliness Assessment",
+  "description": "<p>This repository contains the Link Liveliness Assessment (LLA) component of the SoilWise Repository (SWR). It monitors and validates the links contained within metadata harvested for the SWR, checking link availability, file format, size, and last modification date. It exposes a FastAPI interface for querying link status, broken links, deprecated links, and validation history.</p>",
+  "upload_type": "software",
+  "access_right": "open",
+  "license": "MIT",
+  "publication_date": "2025-03-01",
+  "version": "1.1.4",
+  "keywords": [
+    "link validation",
+    "metadata",
+    "soil",
+    "OGC",
+    "SoilWise",
+    "FastAPI",
+    "FAIR"
+  ],
+  "creators": [
+    {
+      "name": "Gkoles, Vasilis",
+      "affiliation": "Neuroplic S.A."
+    },
+    {
+      "name": "Van Genuchten, Paul",
+      "affiliation": "Wageningen University"
+    }
+  ],
+  "grants": [
+    {
+      "id": "101112838"
+    }
+  ],
+  "communities": [
+    {
+      "identifier": "soilwise-he"
+    }
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/soilwise-he/link-liveliness-assessment",
+      "relation": "isSupplementTo",
+      "resource_type": "software"
+    }
+  ],
+  "language": "eng"
+}
