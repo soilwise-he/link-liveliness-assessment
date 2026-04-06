@@ -10,6 +10,9 @@ authors:
   - given-names: Paul
     family-names: Van Genuchten
     affiliation: Wageningen University
+  - given-names: Dajana 
+    family-names: Snopková
+    affiliation: Masaryk University
 repository-code: https://github.com/soilwise-he/link-liveliness-assessment
 keywords:
   - link validation
