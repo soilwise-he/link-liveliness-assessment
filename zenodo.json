@@ -18,11 +18,15 @@
   "creators": [
     {
       "name": "Gkoles, Vasilis",
-      "affiliation": "Neuroplic S.A."
+      "affiliation": "Neuropublic S.A."
     },
     {
       "name": "Van Genuchten, Paul",
       "affiliation": "Wageningen University"
+    },
+    {
+      "name": "Dajana, Snopková",
+      "affiliation": "Masaryk University"
     }
   ],
   "grants": [
