@@ -149,13 +149,12 @@ The LLA component is built with the following stack:
 ### Key Design Decisions
 
 - Only links in the `ogc-api:records` links section are tested (not links embedded in abstracts) to avoid redundant checks across pages.
-- OGC OWS services are handled with a dedicated script that appends required parameters before validation.
+- OGC services are handled with a dedicated script that appends required parameters before validation.
 - DOI and other facade links are followed through to their target page, allowing the tool to understand the DOI-to-resource relationship.
 - Links that fail repeatedly are marked as deprecated and excluded from future runs to optimise performance.
 - Each link is associated with the record(s) that reference it, enabling targeted notifications when a broken link is found.
-
+- A front-end widget displays the status of each link giving users directl feedback on resource availability.
 ---
-
 ## SoilWise-he Project
 
 This work has been initiated as part of the [SoilWise-he](https://soilwise-he.eu) project. The project receives funding from the European Union's HORIZON Innovation Actions 2022 under grant agreement No. 101112838. Views and opinions expressed are however those of the author(s) only and do not necessarily reflect those of the European Union or Research Executive Agency. Neither the European Union nor the granting authority can be held responsible for them.
