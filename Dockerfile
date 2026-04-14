@@ -1,10 +1,6 @@
 
-FROM harbor.containers.wurnet.nl/proxy-cache/library/python:3.8-slim-buster
+FROM ghcr.io/jumpserver/python:3.12-slim-buster
 LABEL maintainer="genuchten@yahoo.com"
-
-RUN apt-get update && apt-get install --yes \
-        ca-certificates libexpat1 \
-    && rm -rf /var/lib/apt/lists/*
 
 RUN adduser --uid 1000 --gecos '' --disabled-password linky
 

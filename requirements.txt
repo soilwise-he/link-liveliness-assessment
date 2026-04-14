@@ -8,3 +8,7 @@ asyncpg
 linkchecker
 databases
 python-dotenv
+aiohttp
+asyncio
+lxml
+owslib
