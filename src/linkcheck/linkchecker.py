@@ -1,7 +1,10 @@
+import traceback
+
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from lxml import html
-from urllib.parse import urlparse, parse_qs, urlencode
+from urllib.parse import urlparse, parse_qs, urlencode, unquote
+
 from concurrent.futures import ThreadPoolExecutor
 from ogc_services import process_ogc_links
 import psycopg2
@@ -75,7 +78,7 @@ class URLChecker:
                 'gis_capabilities': None
             }
         except requests.RequestException as e:
-            print(f'\x1b[31;20m Failed: \x1b[0m {url}')
+            print(f'\x1b[31;20m Failed: \x1b[0m {url}; Error: {str(e)}\nStack trace:\n{traceback.format_exc()}')
             return {
                 'url': url,
                 'error': str(e),
@@ -162,28 +165,13 @@ def setup_database():
     conn.commit()
     return conn, cur
 
-def get_pagination_info(url):
-  try:
-    # Fetch catalogue JSON
-    response = requests.get(url, headers={'Accept':'application/json','User-Agent':USERAGENT})
-    response.raise_for_status()  # Raise exception for HHTP errors
-    data = response.json()
+def safe_serialize(obj):
+    # Try objects that expose their attributes
+    if hasattr(obj, "__dict__"):
+        return obj.__dict__
 
-    # Extract relevant fields
-    number_matched = data.get('numberMatched', 0)
-    number_returned = data.get('numberReturned', 0)
-
-    # Calculate total pages
-    total_pages = math.ceil(number_matched / number_returned)
-    # if MAX_PAGES and MAX_PAGES < total_pages:
-    #     total_pages = MAX_PAGES
-    return total_pages, number_returned
-  except requests.exceptions.RequestException as e:
-    print(f"Error fetching or parsing JSON data from {url}: {e}")
-    return None
-  except Exception as e:
-    print(f"Error calculating total pages from JSON data: {e}")
-    return None
+    # Fall back to a string representation
+    return str(obj)
 
 def insert_or_update_link(conn, url_result, record_id):
     try:
@@ -209,7 +197,7 @@ def insert_or_update_link(conn, url_result, record_id):
             else:
                 record_db_id = None
                
-            gis_caps = json.dumps(url_result['gis_capabilities']) if url_result['gis_capabilities'] else '{}'
+            gis_caps = json.dumps(url_result['gis_capabilities'], default=safe_serialize, indent=2) if url_result['gis_capabilities'] else '{}'
            
             cur.execute("""
                 INSERT INTO links (urlname, fk_record, consecutive_failures, link_type, link_size, last_modified, gis_capabilities)
@@ -255,14 +243,14 @@ def insert_or_update_link(conn, url_result, record_id):
                     link_id,
                     url_result['status_code'],
                     url_result['is_redirect'],
-                    url_result.get('error')
+                    str(url_result.get('error'))
                 ))
            
             conn.commit()
             return link_id if not deprecated else None
     except Exception as e:
         conn.rollback()
-        print(f"Database error processing URL {url_result['url']}: {str(e)}")
+        print(f"Error processing URL {url_result['url']}: {str(e)}\nStack trace:\n{traceback.format_exc()}")
         return None
 
 def detect_service_type(url, protocol=None):
@@ -323,83 +311,37 @@ def detect_service_type(url, protocol=None):
     # No clear indication found
     return None
 
-def process_url(link, relevant_links, record):
+def process_url(url, protocol, name, record):
     """Process URL and utilize process_ogc_api to get capabilities.
    
     Args:
         url (str): URL to process
-        relevant_links (list): List to store processed URLs and their capabilities
         record (str): Record ID to use as metadata ID for OGC services
    
     Returns:
-        None: Updates relevant_links list in place with (url, capabilities) tuples
+        object: A object containing the URL and its capabilities
     """
-    url = link.get('href','')
-    protocol = link.get('protocol','')
-    layer_name = link.get('name','')
-    rel = link.get('rel','')
-    name = link.get('name','')
+
 
     if url.startswith('http'):
-        if ('thumbnail' in protocol.lower() or 
-            'image' in protocol.lower() or 
-            rel == 'preview' or 
-            name == 'preview'):
-            # Store as a non-OGC URL
-            relevant_links.append((url, None))
-            return
         
         # Use the enhanced detect_service_type function that considers both protocol and URL
-        service_type = detect_service_type(url, protocol)
-        
-        # if service_type:
-        #     print(f'Detected service: {service_type} for URL: {url}')
-        
+        service_type = detect_service_type(url, protocol)    
         # Process OGC API with record ID as metadata ID
         # Pass the protocol to process_ogc_links for additional context
-        capabilities_result = process_ogc_links(url, service_type, layer_name, record)
+        capabilities_result = process_ogc_links(url, service_type, name, record)
         
-        # Store both original URL and capabilities result
-        relevant_links.append((url, capabilities_result))
-    else:
-        # For non-OGC URLs, store with None capabilities
-        relevant_links.append((url, None))
+        return {
+            'record_id': record,
+            'name': name,
+            'url': url,
+            'protocol': protocol,
+            'service_type': service_type,
+            'capabilities': capabilities_result
+        }
 
-def process_item(item, relevant_links, record):
-    if isinstance(item, dict) and 'href' in item and item['href'] not in [None, '', 'null']:
-        if item['href'].startswith('http'):
-            rel_value = item.get('rel', '').lower() if item.get('rel') else ''
-            if rel_value in ['collection', 'self', 'root', 'prev', 'next', 'canonical']:
-                return
-            else:
-                process_url(item, relevant_links, record)
 
-def extract_relevant_links_from_json(json_url):
-    try:
-        response = requests.get(json_url, headers={'Accept':'application/json','User-Agent':USERAGENT})
-        response.raise_for_status()
-        data = response.json()
-        links_map = {}  # Dictionary to store URL:record_id pairs
 
-        features = data.get('features', [])
-        if features:
-            for feature in features:
-                # Get the record ID for this feature
-                record_id = feature.get('id')
-                if record_id:
-                    feature_links = []  
-                    for link in feature.get('links', []):
-                        process_item(link, feature_links, record_id)
-                    # Store both URL and capabilities
-                    for url, capabilities in feature_links:
-                        links_map[url] = {
-                            'record_id': record_id,
-                            'capabilities': capabilities
-                        }
-        return links_map
-    except Exception as e:
-        print(f"Error extracting links from JSON at {json_url}: {e}")
-        return {}
 
 def main():
     start_time = time.time()
@@ -407,17 +349,26 @@ def main():
         conn, cur = setup_database()
     url_checker = URLChecker()
    
-    base_url = base + 'collections/' + collection + '/items?offset='
-    total_pages, items_per_page = get_pagination_info(catalogue_json_url)
-   
-    print(f'Extracting links from catalogue (first {total_pages} pages)...')
+
+    # total_pages, items_per_page = get_pagination_info(catalogue_json_url)
+
+    cur.execute("""
+            SELECT
+                record_id, url, format, name 
+            FROM 
+                metadata.distributions
+        """)
+    records = cur.fetchall()
+
+    print(f'Extracting {len(records)} distributions...')
     url_record_map = {}  # Dictionary to store URL to record_id mapping
 
     # Process only total_pages number of pages
-    for page in range(total_pages):
-        print(f"Processing page {page + 1} of {total_pages} at {time.time()-start_time}")
-        page_url_map = extract_relevant_links_from_json(f"{base_url}{page * items_per_page}")
-        url_record_map.update(page_url_map)
+    for r in records:
+        print(f"Processing link {unquote(r[1]).split('?')[0]} from record {r[0]} at {time.time()-start_time}")
+        pre = process_url(unquote(r[1]), r[2], r[3], r[0])
+        if pre:
+            url_record_map[unquote(r[1])] = pre
    
     print(f"Found {len(url_record_map)} unique links to check")
    
@@ -430,9 +381,9 @@ def main():
         processed_links = 0
         for result in results:
             # Get both record_id and capabilities from the map
-            record_info = url_record_map[result['url']]
+            record_info = url_record_map[result.get('url','')]
             # Update result with capabilities info
-            result['gis_capabilities'] = record_info['capabilities']
+            result['gis_capabilities'] = record_info.get('capabilities','')
            
             if insert_or_update_link(conn, result, record_info['record_id']) is not None:
                 processed_links += 1
