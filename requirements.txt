@@ -10,5 +10,6 @@ databases
 python-dotenv
 aiohttp
 asyncio
+pyproj
 lxml
 owslib

@@ -16,22 +16,16 @@ The SoilWise-he project aims to develop an open access knowledge and data metada
 
 ### Using Docker (recommended)
 
-1. Clone this repository:
-   ```bash
-   git clone https://github.com/soilwise-he/link-liveliness-assessment.git
-   cd link-liveliness-assessment
-   ```
+Run the api (set db connection details in environment)
+```
+docker run -p 8000:8000 ghcr.io/soilwise-he/link-liveliness-assessment
+```
 
-2. Create your environment file and add your database credentials:
-   ```bash
-      cp .env .env
-      # Edit .env with your PostgreSQL credentials and configuration
-   ```
+Run the task (set db connection details in environment)
+```
+docker run --rm --entrypoint python3 ghcr.io/soilwise-he/link-liveliness-assessment linkcheck/linkchecker.py
+```
 
-3. Build and start the service using Docker:
-   ```bash
-   docker-compose up --build
-   ```
 ### Local setup
 ```bash
 pip install -r requirements.txt
