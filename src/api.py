@@ -7,7 +7,7 @@ from datetime import datetime
 import asyncpg
 import logging
 import os
-from urllib.parse import quote_plus
+from urllib.parse import quote, quote_plus
 from typing import Dict, Any, Union
 from linkcheck.on_demand_url_checker import AsyncURLChecker, diagnose_link_status
 
@@ -15,7 +15,8 @@ from linkcheck.on_demand_url_checker import AsyncURLChecker, diagnose_link_statu
 load_dotenv()
 
 # Database connection setup
-DATABASE_URL = f"postgresql://{os.environ.get('POSTGRES_USER')}:{os.environ.get('POSTGRES_PASSWORD')}@{os.environ.get('POSTGRES_HOST')}:{os.environ.get('POSTGRES_PORT')}/{os.environ.get('POSTGRES_DB')}"
+# user and password are percent-encoded so characters like '#', '?', '@' or ':' don't break URL parsing
+DATABASE_URL = f"postgresql://{quote(os.environ.get('POSTGRES_USER', ''), safe='')}:{quote(os.environ.get('POSTGRES_PASSWORD', ''), safe='')}@{os.environ.get('POSTGRES_HOST')}:{os.environ.get('POSTGRES_PORT')}/{os.environ.get('POSTGRES_DB')}"
 
 # if os.environ.get("POSTGRES_SCHEMA"):
 #    unfortunately this does not work
@@ -25,7 +26,7 @@ database = Database(DATABASE_URL)
 schema = 'public'
 if os.environ.get("POSTGRES_SCHEMA"):
     schema = os.environ.get("POSTGRES_SCHEMA")
-print(f"DB: {DATABASE_URL.replace(os.environ.get('POSTGRES_PASSWORD'),'*****')}; Schema: {schema}")
+print(f"DB: postgresql://{os.environ.get('POSTGRES_USER')}:*****@{os.environ.get('POSTGRES_HOST')}:{os.environ.get('POSTGRES_PORT')}/{os.environ.get('POSTGRES_DB')}; Schema: {schema}")
 
 rootpath = os.environ.get("ROOTPATH") or "/"
 
