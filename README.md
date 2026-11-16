@@ -7,8 +7,10 @@ The SoilWise-he project aims to develop an open access knowledge and data metada
 ## Features
 - **Link validation** — Checks each link for availability and collects metadata such as file format, size, and last modification date
 - **Broken link categorization** — Classifies broken links by error type: Redirection, Client, or Server errors
-- **Deprecated link handling** — Excludes links from future checks after 10 consecutive failures
-- **OWS service support** — Applies dedicated handling for OGC web services (WMS, WFS, WCS, and CSW) by detecting their type and quering them with the required parameters aviding treating them as broken links.
+- **Deprecated link handling** — Marks links as deprecated after 10 consecutive failures
+- **Polite crawling** — Links are grouped per site; each site is checked one link at a time, respecting its `robots.txt` crawl-delay (default 1s, max 10s). `429 Too Many Requests` pauses the site (Retry-After, max 60s) and is not counted as a failure
+- **Lookup services** — DOI, Handle and w3id links are checked at the resolver (its 3xx answer) without following the redirect
+- **OWS service support** — Detects OGC web services (WMS, WMTS, WFS, WCS, OGC API) and fetches their GetCapabilities every 30 days, or when a plain HEAD/GET fails, so working services are not reported as broken
 - **On-demand validation** — Supports ad-hoc link checks that return instant results without writing to the database
 - **Availability history** — Builds a status history for each URL when run periodically
 
@@ -32,6 +34,20 @@ pip install -r requirements.txt
 ```
 Then set up your `.env` file and ensure PostgreSQL is running and accessible.
 
+### Configuration (`.env`)
+
+| Variable | Default | Description |
+|---|---|---|
+| `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | — | Database connection (required) |
+| `POSTGRES_SCHEMA` | `public` | Schema for the LLA tables |
+| `STOREINDB` | `true` | Save results to the database |
+| `FULL_REFRESH` | `false` | `true` empties `links` and `validation_history` before the run. Use for a single run, then set back to `false` |
+
+Data is kept between runs, so each run builds on the previous one. Existing databases created by an older version need:
+```sql
+ALTER TABLE links ADD COLUMN caps_last_checked TIMESTAMP;
+```
+
 ## Usage
 
 The LLA component runs automatically as a **weekly CI/CD pipeline**. It can also be triggered manually or used via its FastAPI endpoints.
@@ -44,7 +60,7 @@ curl -X POST http://<host>:<port>:/check-url \
   -H "Content-Type: application/json" \
   -d '{"url": "https://example.com/dataset", "check_ogc_capabilities": false}'
 ```
-Returns status code, content type, file size, redirect info, and a diagnostic message.
+Returns status code, content type, file size, redirect info, and a diagnostic message. Private/internal addresses (localhost, `10.x`, `192.168.x`, ...) are refused.
 
 **Query broken links by error type:**
 ```bash
@@ -52,6 +68,12 @@ curl http://<host>:<port>:/Redirection_URLs/3xx
 curl http://<host>:<port>:/Client_Error_URLs/4xx
 curl http://<host>:<port>:/Server_Errors_URLs/5xx
 curl http://<host>:<port>:/Timeout_URLs
+```
+4xx and 5xx only list links that are currently failing.
+
+**Number of links per site** (total and deprecated, largest first):
+```bash
+curl "http://<host>:<port>:/Links_per_site?limit=100"
 ```
 
 **Check the status of a specific URL:**
@@ -77,6 +99,8 @@ The response includes status code, content metadata, redirect information, and d
 | `link_type` | File format of the resource (e.g., `image/jpeg`, `application/pdf`) |
 | `link_size` | Size of the resource in bytes |
 | `last_modified` | Timestamp of the resource's last modification |
+| `gis_capabilities` | GetCapabilities summary for OGC services (layers, bbox, CRS, ...) |
+| `caps_last_checked` | When `gis_capabilities` was last fetched successfully |
 
 ### Main Component Diagram
 ```mermaid
@@ -104,6 +128,8 @@ classDiagram
     Links : +Int link_size
     Links : +DateTime last_modified
     Links : +String Consecutive_failures
+    Links : +JSONB gis_capabilities
+    Links : +DateTime caps_last_checked
     class Records{
     +Int ID
     +String Records
@@ -134,7 +160,7 @@ The LLA component is built with the following stack:
 
 ### Database Design
 
-**Links table** — stores URL metadata per record: `ID`, `fk_records`, `Urlname`, `deprecated`, `link_type`, `link_size`, `last_modified`, `Consecutive_failures`
+**Links table** — stores URL metadata per record: `ID`, `fk_records`, `Urlname`, `deprecated`, `link_type`, `link_size`, `last_modified`, `Consecutive_failures`, `gis_capabilities`, `caps_last_checked`
 
 **Validation_history table** — stores per-check results: `ID`, `fk_link`, `Statuscode`, `isRedirect`, `Errormessage`, `Timestamp`
 
@@ -144,8 +170,8 @@ The LLA component is built with the following stack:
 
 - Only links in the `ogc-api:records` links section are tested (not links embedded in abstracts) to avoid redundant checks across pages.
 - OGC services are handled with a dedicated script that appends required parameters before validation.
-- DOI and other facade links are followed through to their target page, allowing the tool to understand the DOI-to-resource relationship.
-- Links that fail repeatedly are marked as deprecated and excluded from future runs to optimise performance.
+- DOI, Handle and w3id links are validated at the resolver only; a 3xx answer means the identifier is registered.
+- Links that fail repeatedly are marked as deprecated and no longer added to the validation history.
 - Each link is associated with the record(s) that reference it, enabling targeted notifications when a broken link is found.
 - A front-end widget displays the status of each link giving users directl feedback on resource availability.
 ---

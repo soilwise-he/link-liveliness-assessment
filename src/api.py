@@ -40,30 +40,36 @@ logger = logging.getLogger(__name__)
 
 # Define response models
 class LinkResponse(BaseModel):
-    id_link: int 
+    id_link: int
     urlname: str
     deprecated: Optional[bool] = None
     consecutive_failures: Optional[int] = None
-    link_type: Optional[str] = None  
-    link_size: Optional[int] = None 
+    link_type: Optional[str] = None
+    link_size: Optional[int] = None
     last_modified: Optional[datetime] = None
     gis_capabilities: Optional[Union[Dict[str, Any], str]] = None
+    caps_last_checked: Optional[datetime] = None  # last successful GetCapabilities fetch
 
 class StatusResponse(LinkResponse):
     status_code: Optional[int] = None
-    record_id: Optional[str] = None 
-    is_redirect: Optional[bool] = None  
+    record_id: Optional[str] = None
+    is_redirect: Optional[bool] = None
     error_message: Optional[str] = None
     timestamp: datetime
 
 class TimeoutResponse(LinkResponse):
     status_code: Optional[int] = None  # Make status_code optional for timeout cases
     final_url: Optional[str] = None
-    record_id: Optional[str] = None 
+    record_id: Optional[str] = None
     is_redirect: Optional[bool] = None
     error_message: Optional[str] = None
     timestamp: datetime
-    
+
+class SiteLinkCount(BaseModel):
+    host: str
+    total_links: int
+    deprecated_links: int
+
     # New response models for on-demand checking
 class LinkCheckRequest(BaseModel):
     url: str
@@ -81,11 +87,11 @@ class LinkCheckResponse(BaseModel):
     gis_capabilities: Optional[dict] = None
     diagnosis: str
     timestamp: datetime
-    
+
 # Define status lists
-REDIRECTION_STATUSES = [301, 302, 304, 307, 308]
-CLIENT_ERROR_STATUSES = [400, 401, 403, 404, 405, 409]
-SERVER_ERROR_STATUSES = [500, 501, 503, 504]
+REDIRECTION_STATUSES = [301, 302, 303, 304, 307, 308]
+CLIENT_ERROR_STATUSES = [400, 401, 403, 404, 405, 409, 410]
+SERVER_ERROR_STATUSES = [500, 501, 502, 503, 504]
 
 # Helper function to execute SQL query and fetch results
 async def fetch_data(query: str, values: dict = {}):
@@ -107,10 +113,10 @@ async def check_single_url(request: LinkCheckRequest):
     # Perform URL check
     async with AsyncURLChecker() as checker:
         result = await checker.check_url(request.url, request.check_ogc_capabilities)
-    
+
     gis_cap = result.get('gis_capabilities')
     print(f"GIS Capabilities: {gis_cap}")
-    
+
     return LinkCheckResponse(
         url=request.url,
         status_code=result.get('status_code'),
@@ -129,15 +135,15 @@ async def check_single_url(request: LinkCheckRequest):
 @app.get('/Redirection_URLs/3xx', response_model=List[StatusResponse])
 async def get_redirection_statuses():
     query = f"""
-        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified, l.gis_capabilities, 
+        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified, l.gis_capabilities, l.caps_last_checked,
                r.record_id, vh.status_code, vh.is_redirect, vh.error_message, vh.timestamp
         FROM {schema}.links l
-        JOIN {schema}.records r ON l.fk_record = r.id
+        LEFT JOIN {schema}.records r ON l.fk_record = r.id
         JOIN {schema}.validation_history vh ON l.id_link = vh.fk_link
         WHERE vh.status_code = ANY(:statuses)
         AND vh.timestamp = (
             SELECT MAX(timestamp)
-            FROM validation_history
+            FROM {schema}.validation_history
             WHERE fk_link = l.id_link
         )
     """
@@ -148,12 +154,13 @@ async def get_redirection_statuses():
 @app.get('/Client_Error_URLs/4xx', response_model=List[StatusResponse])
 async def get_client_error_statuses():
     query = f"""
-        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified, l.gis_capabilities,
+        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified, l.gis_capabilities, l.caps_last_checked,
                r.record_id, vh.status_code, vh.is_redirect, vh.error_message, vh.timestamp
         FROM {schema}.links l
-        JOIN {schema}.records r ON l.fk_record = r.id
+        LEFT JOIN {schema}.records r ON l.fk_record = r.id
         JOIN {schema}.validation_history vh ON l.id_link = vh.fk_link
         WHERE vh.status_code = ANY(:statuses)
+        AND l.consecutive_failures > 0
         AND vh.timestamp = (
             SELECT MAX(timestamp)
             FROM {schema}.validation_history
@@ -167,12 +174,13 @@ async def get_client_error_statuses():
 @app.get('/Server_Errors_URLs/5xx', response_model=List[StatusResponse])
 async def get_server_error_statuses():
     query = f"""
-        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified, l.gis_capabilities,
+        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified, l.gis_capabilities, l.caps_last_checked,
                r.record_id, vh.status_code, vh.is_redirect, vh.error_message, vh.timestamp
         FROM {schema}.links l
-        JOIN {schema}.records r ON l.fk_record = r.id
+        LEFT JOIN {schema}.records r ON l.fk_record = r.id
         JOIN {schema}.validation_history vh ON l.id_link = vh.fk_link
         WHERE vh.status_code = ANY(:statuses)
+        AND l.consecutive_failures > 0
         AND vh.timestamp = (
             SELECT MAX(timestamp)
             FROM {schema}.validation_history
@@ -186,10 +194,10 @@ async def get_server_error_statuses():
 @app.get('/status/{item:path}', response_model=List[StatusResponse])
 async def get_status_for_url(item):
     query = f"""
-        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified, l.gis_capabilities,
+        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified, l.gis_capabilities, l.caps_last_checked,
                r.record_id, vh.status_code, vh.is_redirect, vh.error_message, vh.timestamp
         FROM {schema}.links l
-        JOIN {schema}.records r ON l.fk_record = r.id
+        LEFT JOIN {schema}.records r ON l.fk_record = r.id
         JOIN {schema}.validation_history vh ON l.id_link = vh.fk_link
         WHERE l.urlname = :item
         AND vh.timestamp = (
@@ -205,12 +213,12 @@ async def get_status_for_url(item):
 @app.get('/Timeout_URLs', response_model=List[TimeoutResponse])
 async def get_timeout_urls():
     query = f"""
-        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified, l.gis_capabilities,
+        SELECT l.id_link, l.urlname, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified, l.gis_capabilities, l.caps_last_checked,
                r.record_id, vh.status_code, vh.is_redirect, vh.error_message, vh.timestamp
         FROM {schema}.links l
-        JOIN {schema}.records r ON l.fk_record = r.id
+        LEFT JOIN {schema}.records r ON l.fk_record = r.id
         JOIN {schema}.validation_history vh ON l.id_link = vh.fk_link
-        WHERE (vh.error_message LIKE '%ReadTimeout%' OR vh.error_message LIKE '%ConnectTimeout%')
+        WHERE (vh.error_message ILIKE '%timed out%' OR vh.error_message ILIKE '%timeout%')
         AND vh.timestamp = (
             SELECT MAX(timestamp)
             FROM {schema}.validation_history
@@ -223,12 +231,40 @@ async def get_timeout_urls():
 @app.get('/Deprecated_URLs', response_model=List[LinkResponse])
 async def get_deprecated_urls():
     query = f"""
-        SELECT l.id_link, l.urlname, r.record_id, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified, l.gis_capabilities
+        SELECT l.id_link, l.urlname, r.record_id, l.deprecated, l.consecutive_failures, l.link_type, l.link_size, l.last_modified, l.gis_capabilities, l.caps_last_checked
         FROM {schema}.links l
-        JOIN {schema}.records r ON l.fk_record = r.id
+        LEFT JOIN {schema}.records r ON l.fk_record = r.id
         WHERE l.deprecated IS TRUE
     """
     data = await fetch_data(query=query)
+    return data
+
+@app.get('/Links_per_site', response_model=List[SiteLinkCount])
+async def get_links_per_site(
+    limit: int = Query(100, ge=1, le=10000, description="Maximum number of sites to return, largest first (default: 100)")
+):
+    """
+    Total number of links per site (host), largest first.
+    The host is grouped like the crawler does: lowercase, without a leading 'www.'.
+    """
+    query = f"""
+        SELECT host,
+               COUNT(*) AS total_links,
+               COUNT(*) FILTER (WHERE deprecated IS TRUE) AS deprecated_links
+        FROM (
+            SELECT COALESCE(
+                       regexp_replace(
+                           lower(substring(urlname from '^[A-Za-z][A-Za-z0-9+.-]*://(?:[^@/]*@)?([^/:?#]+)')),
+                           '^www\\.', ''),
+                       'unknown') AS host,
+                   deprecated
+            FROM {schema}.links
+        ) AS hosts
+        GROUP BY host
+        ORDER BY total_links DESC, host
+        LIMIT :limit
+    """
+    data = await fetch_data(query=query, values={'limit': limit})
     return data
 
 @app.get("/URL_status_history", response_model=List[StatusResponse])
@@ -237,27 +273,27 @@ async def get_url_status_history(
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of results (default: 100, min: 1, max: 1000)")
 ) -> List[StatusResponse]:
     query = f"""
-        SELECT 
+        SELECT
             l.id_link,
             l.urlname,
             l.deprecated,
             r.record_id,
             l.consecutive_failures,
-            l.link_type, 
+            l.link_type,
             l.link_size,
             l.last_modified,
-            l.gis_capabilities,
+            l.gis_capabilities, l.caps_last_checked,
             vh.status_code,
             vh.is_redirect,
             vh.error_message,
             vh.timestamp
-        FROM 
+        FROM
             {schema}.links l
-        JOIN {schema}.records r ON l.fk_record = r.id
+        LEFT JOIN {schema}.records r ON l.fk_record = r.id
         JOIN {schema}.validation_history vh ON l.id_link = vh.fk_link
-        WHERE 
+        WHERE
             l.urlname = :url
-        ORDER BY 
+        ORDER BY
             vh.timestamp DESC
         LIMIT :limit
     """
@@ -265,9 +301,9 @@ async def get_url_status_history(
     try:
         results = await fetch_data(query=query, values={'url': url, 'limit': limit})
         logger.info(f"Query returned {len(results)} results for URL: {url}")
-        
+
         response_data = [StatusResponse(**dict(row)) for row in results]
-        
+
         return response_data
     except Exception as e:
         logger.error(f"Error occurred while fetching URL status history: {e}", exc_info=True)
