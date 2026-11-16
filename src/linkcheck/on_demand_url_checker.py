@@ -1,5 +1,6 @@
 import asyncio
 import aiohttp
+import ipaddress, socket
 from datetime import datetime
 from typing import Dict, Any, Optional
 from urllib.parse import urlparse, parse_qs
@@ -8,6 +9,14 @@ from .ogc_services import process_ogc_links
 # Configuration constants
 TIMEOUT = 5
 USERAGENT = 'Soilwise Link Liveliness assessment v0.1.0'
+
+def is_public(url):
+    try:
+        host = urlparse(url).hostname
+        ips = {info[4][0] for info in socket.getaddrinfo(host, None)}
+        return all(ipaddress.ip_address(ip).is_global for ip in ips)
+    except Exception:
+        return False
 
 class AsyncURLChecker:
     """Async URL checker that handles single URL validation"""
@@ -35,6 +44,8 @@ class AsyncURLChecker:
         Check a single URL asynchronously with optional OGC capabilities detection
         """
         try:
+            if not is_public(url):
+                raise ValueError("URL is not public or reachable")
             # First try HEAD request
             async with self.session.head(url, allow_redirects=True) as response:
                 if response.status >= 400:
