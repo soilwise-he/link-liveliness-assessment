@@ -5,12 +5,13 @@ from datetime import datetime, timedelta
 from urllib.parse import urlparse, parse_qs, unquote
 from urllib.robotparser import RobotFileParser
 
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from ogc_services import process_ogc_links
 import psycopg2
 import requests
 import time
 import json
+import re
 import os
 
 # Configuration constants
@@ -19,14 +20,15 @@ import os
 USERAGENT = 'Soilwise Link Liveliness assessment v0.1.0'  # Sent with every request
 
 # ─── Timeouts ────────────────
-TIMEOUT = 30          # Normal links
+TIMEOUT = 30          # Normal links: max wait for the reply
+CONNECT_TIMEOUT = 5   # Connection timeout for normal links
 LOOKUP_TIMEOUT = 5    # Lookup services (DOI, Handle, w3id)
 
 # ─── Lookup services ───
 LOOKUP_SERVICES = {"doi.org", "dx.doi.org", "hdl.handle.net", "w3id.org"}
 
 # ─── Requests  ─────────────────
-MAX_WORKERS = 5           # Threads for checking links; one thread per site
+MAX_WORKERS = 10           # Threads for checking links; one thread per site
 DEFAULT_CRAWL_DELAY = 1   # Seconds between requests to one site if robots.txt has no Crawl-delay
 MAX_CRAWL_DELAY = 10      # Override robots.txt Crawl delay if it says more than 10 seconds
 
@@ -52,20 +54,30 @@ collection = os.environ.get("OGCAPI_COLLECTION") or "metadata:main"
 # format catalogue path with f-string
 catalogue_domain= f"{base}/collections/{collection}/items/"
 
-def is_lookup_service(url):
-    host = (urlparse(url).hostname or "").lower()
-    if host.startswith("www."):
-        host = host[4:]
-    return host in LOOKUP_SERVICES
+def site_host(url):
+    """Lowercase hostname without 'www.', used to group links by site."""
+    host = (urlparse(url).hostname or "unknown").lower()
+    return host[4:] if host.startswith("www.") else host
 
-def get_crawl_delay(host):
+def is_lookup_service(url):
+    return site_host(url) in LOOKUP_SERVICES
+
+def head_then_get(session, url, timeout, allow_redirects):
+    """HEAD first; if the server answers with an error, try GET (some servers reject HEAD)."""
+    response = session.head(url, timeout=timeout, allow_redirects=allow_redirects)
+    if response.status_code >= 400:
+        response = session.get(url, timeout=timeout,
+                               allow_redirects=allow_redirects, stream=True)
+        response.close()   # only headers are needed; frees the connection for reuse
+    return response
+
+def get_crawl_delay(session, host):
     if host == "unknown":
         return DEFAULT_CRAWL_DELAY
     try:
         # Download robots.xt
-        response = requests.get(f"https://{host}/robots.txt",
-                                timeout=LOOKUP_TIMEOUT,
-                                headers={'User-Agent': USERAGENT})
+        response = session.get(f"https://{host}/robots.txt", timeout=LOOKUP_TIMEOUT)
+
         if response.status_code != 200:
             return DEFAULT_CRAWL_DELAY
 
@@ -91,16 +103,10 @@ class URLChecker:
     def __init__(self, timeout=TIMEOUT):
         self.timeout = timeout
 
-    def check_lookup_url(self, url):
+    def check_lookup_url(self, session, url):
         # Ask only lookup service, don't follow the redirect
-        response = requests.head(url, timeout=LOOKUP_TIMEOUT,
-                                 allow_redirects=False,
-                                 headers={'User-Agent': USERAGENT})
-        # Get request if HEAD is not allowed for LOOKUP_SERVICES
-        if response.status_code == 405:
-            response = requests.get(url, timeout=LOOKUP_TIMEOUT,
-                                    allow_redirects=False, stream=True,
-                                    headers={'User-Agent': USERAGENT})
+        response = head_then_get(session, url, LOOKUP_TIMEOUT, allow_redirects=False)
+
         status = response.status_code
         return {
             'url': url,
@@ -114,20 +120,12 @@ class URLChecker:
             'retry_after': response.headers.get('Retry-After')
         }
 
-    def check_url(self, url):
+    def check_url(self, session, url):
         try:
             if is_lookup_service(url):
-                return self.check_lookup_url(url)
+                return self.check_lookup_url(session, url)
 
-            response = requests.head(url, timeout=self.timeout,
-                                    allow_redirects=True,
-                                    headers={'User-Agent': USERAGENT})
-
-            # If head request fails, try GET request
-            if response.status_code >= 400:
-                response = requests.get(url, timeout=self.timeout,
-                                       allow_redirects=True, stream=True,
-                                       headers={'User-Agent': USERAGENT})
+            response = head_then_get(session, url, (CONNECT_TIMEOUT, self.timeout), allow_redirects=True)
 
             # Get content type from header
             content_type = response.headers.get('content-type','').split(';')[0]
@@ -169,68 +167,58 @@ class URLChecker:
 
     def check_site(self, host, site):
         """Check one site's links one by one, waiting crawl_delay seconds between requests."""
-        results = []
-        for i, link in enumerate(site["links"]):
-            if i > 0:
-                time.sleep(site["crawl_delay"])
-            result = self.check_url(link["url"])
-            retries = 0
-            while result.get('status_code') == 429 and retries < MAX_429_RETRIES:
-                pause = get_pause(result.get('retry_after')) # 'Retry-After' header or default pause
-                print(f"429 from {host}, pausing site for {pause}s")
-                time.sleep(pause)
-                result = self.check_url(link["url"])
-                retries += 1
-            # If still rate-limited after retries log it
-            if result.get('status_code') == 429:
-                result['rate_limited'] = True
+        with requests.Session() as session:
+            session.headers.update({'User-Agent': USERAGENT})
+            site["crawl_delay"] = get_crawl_delay(session, host)
+            print(f"{host}: crawl_delay={site['crawl_delay']}s, links={len(site['links'])}")
+            results = []
+            for i, link in enumerate(site["links"]):
+                if i > 0:
+                    time.sleep(site["crawl_delay"])
+                result = self.check_url(session, link["url"])
+                retries = 0
+                while result.get('status_code') == 429 and retries < MAX_429_RETRIES:
+                    pause = get_pause(result.get('retry_after')) # 'Retry-After' header or default pause
+                    print(f"429 from {host}, pausing site for {pause}s")
+                    time.sleep(pause)
+                    result = self.check_url(session, link["url"])
+                    retries += 1
+                result['record_id'] = link['record_id']
+                # If still rate-limited after retries log it
+                if result.get('status_code') == 429:
+                    result['rate_limited'] = True
+                    results.append(result)
+                    continue
+
+                result['http_valid'] = result['valid']  # HTTP result before any override
+                result['gis_capabilities'] = None
+                result['caps_fetched'] = False # Set to True if GetCapabilities was fetched
+
+                # GetCapabilities: monthly refresh, or second opinion when HEAD/GET failed
+                if link["service_type"] and (link["caps_due"] or not result['valid']):
+                    time.sleep(site["crawl_delay"])  # wait before fetching capabilities
+                    caps = process_ogc_links(link["url"], link["service_type"],
+                                            link["name"], link["record_id"])
+                    result['gis_capabilities'] = caps
+                    result['caps_fetched'] = True
+                    if caps and not result['valid']:
+                        result['valid'] = True
+                        result['error'] = 'HEAD/GET failed, but GetCapabilities succeeded'
+
                 results.append(result)
-                continue
-
-            result['http_valid'] = result['valid']  # HTTP result before any override
-            result['gis_capabilities'] = None
-            result['caps_fetched'] = False # Set to True if GetCapabilities was fetched
-
-            # GetCapabilities: monthly refresh, or second opinion when HEAD/GET failed
-            if link["service_type"] and (link["caps_due"] or not result['valid']):
-                time.sleep(site["crawl_delay"])  # wait before fetching capabilities
-                caps = process_ogc_links(link["url"], link["service_type"],
-                                         link["name"], link["record_id"])
-                result['gis_capabilities'] = caps
-                result['caps_fetched'] = True
-                if caps and not result['valid']:
-                    result['valid'] = True
-                    result['error'] = 'HEAD/GET failed, but GetCapabilities succeeded'
-
-            results.append(result)
 
         return results
 
     def check_sites(self, sites):
-        """One task per site; a free thread takes the next waiting site."""
+        """One task per site; yields each site's results as soon as that site is done."""
         # Biggest sites first, so they don't start last and slow down the whole run
         ordered = sorted(sites.items(), key=lambda x: len(x[1]["links"]), reverse=True)
-        results = []
         with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
             site_jobs = [executor.submit(self.check_site, host, site) for host, site in ordered]
-            for job in site_jobs:
-                results.extend(job.result())
-        return results
+            for job in as_completed(site_jobs):
+                yield job.result()
 
-def setup_database():
-
-    opts=''
-    if os.environ.get("POSTGRES_SCHEMA"):
-        opts = f"-c search_path={os.environ.get('POSTGRES_SCHEMA')}"
-
-    conn = psycopg2.connect(
-        host=os.environ.get("POSTGRES_HOST"),
-        port=os.environ.get("POSTGRES_PORT"),
-        dbname=os.environ.get("POSTGRES_DB"),
-        user=os.environ.get("POSTGRES_USER"),
-        password=os.environ.get("POSTGRES_PASSWORD"),
-        options=opts
-    )
+def setup_database(conn):
     cur = conn.cursor()
 
     # Drop existing tables
@@ -287,7 +275,6 @@ def setup_database():
     if FULL_REFRESH:
         cur.execute("TRUNCATE links, validation_history CASCADE")
     conn.commit()
-    return conn, cur
 
 def safe_serialize(obj):
     # Try objects that expose their attributes
@@ -469,16 +456,8 @@ def detect_service_type(url, protocol=None):
     # No clear indication found
     return None
 
-def process_url(url, protocol, name, record):
-    """Process URL and utilize process_ogc_api to get capabilities.
-
-    Args:
-        url (str): URL to process
-        record (str): Record ID to use as metadata ID for OGC services
-
-    Returns:
-        object: A object containing the URL and its capabilities
-    """
+def build_link_info(url, protocol, name, record):
+    """Info dict for one http(s) link incl. its service type; None for other links."""
     if url.startswith('http'):
         service_type = detect_service_type(url, protocol)
         return {
@@ -489,89 +468,107 @@ def process_url(url, protocol, name, record):
             'service_type': service_type,
         }
 
-def main():
-    start_time = time.time()
-    if STOREINDB:
-        conn, cur = setup_database()
-    url_checker = URLChecker()
+# HTML-escaped '&' ('&amp;'), also when it was percent-encoded afterwards:
+# '&amp;', '&amp%3B', '%26amp;', '%26amp%3B', '%2526amp%253B'
+ESCAPED_AMP = re.compile(r'(&|%26|%2526)amp(;|%3B|%253B)', re.IGNORECASE)
 
-    cur.execute("""
-            SELECT
-                record_id, url, format, name
-            FROM
-                metadata.distributions
-        """)
-    records = cur.fetchall()
+def clean_url(url):
+    """Fix catalogue URLs that were HTML-escaped or percent-encoded as a whole.
+    Any other URL is left exactly as it is."""
+    url = url.strip()
 
-    print(f'Extracting {len(records)}...')
-    url_record_map = {}  # Dictionary to store URL to record_id mapping
-    cur.execute("SELECT urlname, caps_last_checked FROM links")
-    caps_dates = dict(cur.fetchall())  # {url: date or None}
-    for r in records:
-        print(f"Processing link {unquote(r[1]).split('?')[0]} from record {r[0]} at {time.time()-start_time}")
-        pre = process_url(unquote(r[1]), r[2], r[3], r[0])
-        if pre:
-            url_record_map[unquote(r[1])] = pre
+    # 1. Whole URL encoded ('https%3A%2F%2Fex.org...') → decode it once
+    if url.lower().startswith(('http%3a', 'https%3a')):
+        url = unquote(url)
 
+    # 2. Whole query encoded ('?service%3DWMS%26request%3D...') → decode the query once
+    base, sep, query = url.partition('?')
+    if sep and '=' not in query and '%3d' in query.lower():
+        url = base + '?' + unquote(query)
+
+    # 3. Escaped '&' → '&' (repeat for double escaping, e.g. '&amp;amp;')
+    while ESCAPED_AMP.search(url):
+        url = ESCAPED_AMP.sub('&', url)
+
+    return url
+
+def load_sites(conn):
+    # Read links from the database
+    with conn.cursor() as cur:
+        cur.execute("SELECT record_id, url, format, name FROM metadata.distributions")
+        rows = cur.fetchall()
+    print(f'Extracting {len(rows)}...')
+
+    links = {}
+    for record_id, url, protocol, name in rows:
+        if not url:
+            continue   # no URL (NULL or empty) → nothing to check
+        url = clean_url(url)
+        info =build_link_info(url, protocol, name, record_id)
+        if info:
+            links[url] = info   # same URL again → later record wins
+
+    # Capabilities dates from earlier runs (none if the links table doesn't exist yet)
+    caps_dates = {}
+    with conn.cursor() as cur:
+        cur.execute("SELECT to_regclass('links')")
+        if cur.fetchone()[0] is not None:
+            cur.execute("SELECT urlname, caps_last_checked FROM links")
+            caps_dates = dict(cur.fetchall())
+
+    # Group by site
     caps_cutoff = datetime.now() - timedelta(days=CAPS_REFRESH_DAYS)
     sites = {}
-    # Group by hostname
-    for url, info in url_record_map.items():
-        host = (urlparse(url).hostname or "unknown").lower()
-        if host.startswith("www."):
-            host = host[4:]
-        if host not in sites:
-            sites[host] = {"crawl_delay": None, "links": []}
+    for url, info in links.items():
+        site = sites.setdefault(site_host(url), {"crawl_delay": None, "links": []})
         last_checked = caps_dates.get(url)
-        sites[host]["links"].append({
+        site["links"].append({
             "url": url,
             "record_id": info['record_id'],
             "name": info['name'],
             "service_type": info['service_type'],
-            "caps_due": last_checked is None or last_checked < caps_cutoff
+            "caps_due": last_checked is None or last_checked < caps_cutoff,
         })
+    return sites
 
-    # Read each site's crawl-delay from robots.txt
-    for host in sites:
-        sites[host]["crawl_delay"] = get_crawl_delay(host)
-        print(f"{host}: crawl_delay={sites[host]['crawl_delay']}s, links={len(sites[host]['links'])}")
-
-    # Check links: one thread per site, crawl-delay between requests
-    results = url_checker.check_sites(sites)
-
-    # Process results
-    if STOREINDB:
-        processed_links = 0
-        for result in results:
-            if result.get('rate_limited'):
-                print(f"Skipping {result['url']}: still rate-limited (429)")
-                log_rate_limited(conn, result)
-                continue
-            # Get both record_id and capabilities from the map
-            record_info = url_record_map[result.get('url','')]
-
-            if insert_or_update_link(conn, result, record_info['record_id']) is not None:
-                processed_links += 1
-
-        cur.execute("""
-            SELECT
-                COUNT(*) as total_checks,
-                SUM(CASE WHEN status_code BETWEEN 200 AND 399 THEN 1 ELSE 0 END) as successful_checks
-            FROM validation_history
-        """)
-        total_checks, successful_checks = cur.fetchone()
-
-    end_time = time.time()
-    print("\nSummary:")
-    print(f"Time elapsed: {end_time - start_time:.2f} seconds")
-
-    if STOREINDB == True:
-        print(f"Total checks performed: {total_checks}")
-        print(f"Successful checks: {successful_checks}")
-
-        # Close the database connection
-        cur.close()
-        conn.close()
-
+def connect_db():
+    opts = ''
+    if os.environ.get("POSTGRES_SCHEMA"):
+        opts = f"-c search_path={os.environ.get('POSTGRES_SCHEMA')}"
+    return psycopg2.connect(
+        host=os.environ.get("POSTGRES_HOST"),
+        port=os.environ.get("POSTGRES_PORT"),
+        dbname=os.environ.get("POSTGRES_DB"),
+        user=os.environ.get("POSTGRES_USER"),
+        password=os.environ.get("POSTGRES_PASSWORD"),
+        options=opts
+    )
+    
+def save_results_to_db(conn, results):
+    for result in results:
+        if result.get('rate_limited'):
+            print(f"Skipping {result['url']}: still rate-limited (429)")
+            log_rate_limited(conn, result)
+        else:
+            insert_or_update_link(conn, result, result['record_id'])
+            
+def main():
+    start_time = time.time()
+    con = connect_db()
+    try:
+        if STOREINDB:
+            setup_database(con)
+        sites = load_sites(con)
+        results = []
+        for site_results in URLChecker().check_sites(sites):
+            if STOREINDB:
+                save_results_to_db(con, site_results)
+            results.extend(site_results)
+        checked = [r for r in results if not r.get('rate_limited')]
+        print(f"\nTime elapsed: {time.time() - start_time:.2f} seconds")
+        print(f"Links checked: {len(checked)}, valid: {sum(r['valid'] for r in checked)}, invalid: {sum(not r['valid'] for r in checked)}")
+    finally:
+        con.close()
+        
 if __name__ == "__main__":
     main()
