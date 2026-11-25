@@ -47,13 +47,6 @@ load_dotenv()
 FULL_REFRESH = os.environ.get("FULL_REFRESH", "").lower() == "true"
 STOREINDB = os.environ.get("STOREINDB", "true").lower() == "true"
 
-# base catalog
-base = os.environ.get("OGCAPI_URL") or "https://demo.pycsw.org/gisdata"
-collection = os.environ.get("OGCAPI_COLLECTION") or "metadata:main"
-
-# format catalogue path with f-string
-catalogue_domain= f"{base}/collections/{collection}/items/"
-
 def site_host(url):
     """Lowercase hostname without 'www.', used to group links by site."""
     host = (urlparse(url).hostname or "unknown").lower()
@@ -295,14 +288,14 @@ def insert_or_update_link(conn, url_result, record_id):
                     VALUES (%s)
                     ON CONFLICT (record_id) DO NOTHING
                     RETURNING id
-                """, (catalogue_domain + record_id,))
+                """, (record_id,))
                 record_result = cur.fetchone()
 
                 if record_result:
                     record_db_id = record_result[0]
                 else:
                     cur.execute("SELECT id FROM records WHERE record_id = %s",
-                              (catalogue_domain + record_id,))
+                              (record_id,))
                     record_result = cur.fetchone()
                     record_db_id = record_result[0] if record_result else None
             else:
@@ -494,8 +487,13 @@ def clean_url(url):
 
 def load_sites(conn):
     # Read links from the database
+    filter = ""
+    if os.environ.get("LL_LIMIT"):
+        filter = f" LIMIT {os.environ.get("LL_LIMIT")}"
     with conn.cursor() as cur:
-        cur.execute("SELECT record_id, url, format, name FROM metadata.distributions")
+        cur.execute("""SELECT DISTINCT ON (record_id, url) 
+                       record_id, url, format, name 
+                       FROM metadata.distributions""" + filter)
         rows = cur.fetchall()
     print(f'Extracting {len(rows)}...')
 
