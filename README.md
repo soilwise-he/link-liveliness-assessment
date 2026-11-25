@@ -34,6 +34,7 @@ pip install -r requirements.txt
 ```
 Then set up your `.env` file and ensure PostgreSQL is running and accessible.
 
+
 ### Configuration (`.env`)
 
 | Variable | Default | Description |
@@ -46,6 +47,12 @@ Then set up your `.env` file and ensure PostgreSQL is running and accessible.
 Data is kept between runs, so each run builds on the previous one. Existing databases created by an older version need:
 ```sql
 ALTER TABLE links ADD COLUMN caps_last_checked TIMESTAMP;
+```
+
+Run the api locally.
+
+```
+python3 -m uvicorn api:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ## Usage
@@ -174,7 +181,9 @@ The LLA component is built with the following stack:
 - Links that fail repeatedly are marked as deprecated and no longer added to the validation history.
 - Each link is associated with the record(s) that reference it, enabling targeted notifications when a broken link is found.
 - A front-end widget displays the status of each link giving users directl feedback on resource availability.
+
 ---
+
 ## SoilWise-he Project
 
 This work has been initiated as part of the [SoilWise-he](https://soilwise-he.eu) project. The project receives funding from the European Union's HORIZON Innovation Actions 2022 under grant agreement No. 101112838. Views and opinions expressed are however those of the author(s) only and do not necessarily reflect those of the European Union or Research Executive Agency. Neither the European Union nor the granting authority can be held responsible for them.
