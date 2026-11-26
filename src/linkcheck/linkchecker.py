@@ -66,32 +66,51 @@ def head_then_get(session, url, timeout, allow_redirects):
 
 def get_crawl_delay(session, host):
     if host == "unknown":
-        return DEFAULT_CRAWL_DELAY
+        return DEFAULT_CRAWL_DELAY, None, True
     try:
         # Download robots.xt
         response = session.get(f"https://{host}/robots.txt", timeout=LOOKUP_TIMEOUT)
-
         if response.status_code != 200:
-            return DEFAULT_CRAWL_DELAY
-
+            return DEFAULT_CRAWL_DELAY, None, True
+        
         # Read it with RobotFileParser
         rp = RobotFileParser()
         rp.parse(response.text.splitlines())
         delay = rp.crawl_delay(USERAGENT)
 
         if delay is None:
-            return DEFAULT_CRAWL_DELAY
-        return min(float(delay), MAX_CRAWL_DELAY)
+            return DEFAULT_CRAWL_DELAY, rp, True
+        return min(float(delay), MAX_CRAWL_DELAY), rp, True
+    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+        print(f"robots.txt not reachable for {host}: {e}")
+        return DEFAULT_CRAWL_DELAY, None, False
     except Exception as e:
         print(f"Could not read robots.txt for {host}: {e}")
-        return DEFAULT_CRAWL_DELAY
+        return DEFAULT_CRAWL_DELAY, None, True
 
 def get_pause(retry_after):
     try:
         return min(int(retry_after), MAX_RATE_LIMIT_PAUSE)
     except (TypeError, ValueError):
         return RATE_LIMIT_PAUSE
-
+    
+def site_down_result(link):
+    """Failed result for a link that wasn't checked because its site is down."""
+    return {
+        'url': link['url'],
+        'record_id': link['record_id'],
+        'status_code': None,
+        'is_redirect': None,
+        'valid': False,
+        'http_valid': False,
+        'content_type': None,
+        'content_size': None,
+        'last_modified': None,
+        'gis_capabilities': None,
+        'caps_fetched': False,
+        'error': 'Site unreachable (robots.txt and first link failed), not checked',
+    }
+    
 class URLChecker:
     def __init__(self, timeout=TIMEOUT):
         self.timeout = timeout
@@ -162,13 +181,29 @@ class URLChecker:
         """Check one site's links one by one, waiting crawl_delay seconds between requests."""
         with requests.Session() as session:
             session.headers.update({'User-Agent': USERAGENT})
-            site["crawl_delay"] = get_crawl_delay(session, host)
+            site["crawl_delay"], rp, reachable = get_crawl_delay(session, host)
             print(f"{host}: crawl_delay={site['crawl_delay']}s, links={len(site['links'])}")
             results = []
+            site_down = False
             for i, link in enumerate(site["links"]):
+                if rp and not rp.can_fetch(USERAGENT, link["url"]):
+                    print(f"Blocked by robots.txt: {link['url']}")
+                    results.append({'url': link['url'], 'record_id': link['record_id'], 'robots_blocked': True})
+                    continue
+                
+                if site_down:
+                    results.append(site_down_result(link))
+                    continue
+                
                 if i > 0:
                     time.sleep(site["crawl_delay"])
                 result = self.check_url(session, link["url"])
+                
+                #robots.txt didn't answer and the first link didn't either -> site is down
+                if not reachable and result['status_code'] is None:
+                    print(f"{host} is down, marking remaining links as failed")
+                    site_down = True
+                    
                 retries = 0
                 while result.get('status_code') == 429 and retries < MAX_429_RETRIES:
                     pause = get_pause(result.get('retry_after')) # 'Retry-After' header or default pause
@@ -176,13 +211,14 @@ class URLChecker:
                     time.sleep(pause)
                     result = self.check_url(session, link["url"])
                     retries += 1
-                result['record_id'] = link['record_id']
+                    
                 # If still rate-limited after retries log it
                 if result.get('status_code') == 429:
-                    result['rate_limited'] = True
-                    results.append(result)
+                    print(f"Still rate-limited (429), skipping: {link['url']}")
+                    results.append({'url': link['url'], 'record_id': link['record_id'], 'rate_limited': True})
                     continue
 
+                result['record_id'] = link['record_id']
                 result['http_valid'] = result['valid']  # HTTP result before any override
                 result['gis_capabilities'] = None
                 result['caps_fetched'] = False # Set to True if GetCapabilities was fetched
@@ -364,32 +400,19 @@ def insert_or_update_link(conn, url_result, record_id):
         print(f"Error processing URL {url_result['url']}: {str(e)}\nStack trace:\n{traceback.format_exc()}")
         return None
 
-def log_rate_limited(conn, url_result):
-    """Record a 429 in validation_history without touching the links table
-    (no failure counted, old values kept). Only for links already in the DB."""
+def log_not_checked(conn, url, message):
+    """History row for a link that wasn't really checked (429, robots.txt). No failure counted."""
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT id_link, deprecated FROM links WHERE urlname = %s",
-                        (url_result['url'],))
-            row = cur.fetchone()
-            if row is None or row[1]:
-                return  # new link (nothing to attach to) or deprecated link
-            cur.execute("""
-                INSERT INTO validation_history(
-                    fk_link, status_code,
-                    is_redirect, error_message
-                )
-                VALUES(%s, %s, %s, %s)
-            """, (
-                row[0],
-                url_result['status_code'],
-                url_result['is_redirect'],
-                'Rate limited (429), link not marked as broken'
-            ))
+            cur.execute("INSERT INTO links (urlname) VALUES (%s) ON CONFLICT (urlname) DO NOTHING", (url,))
+            cur.execute("SELECT id_link FROM links WHERE urlname = %s", (url,))
+            link_id = cur.fetchone()[0]
+            cur.execute("INSERT INTO validation_history (fk_link, error_message) VALUES (%s, %s)",
+                        (link_id, message))
             conn.commit()
     except Exception as e:
         conn.rollback()
-        print(f"Error logging rate limit for {url_result['url']}: {str(e)}")
+        print(f"Error logging {url}: {e}")
 
 def detect_service_type(url, protocol=None):
     if not url:
@@ -544,9 +567,10 @@ def connect_db():
     
 def save_results_to_db(conn, results):
     for result in results:
-        if result.get('rate_limited'):
-            print(f"Skipping {result['url']}: still rate-limited (429)")
-            log_rate_limited(conn, result)
+        if result.get('robots_blocked'):
+            log_not_checked(conn, result['url'], 'Blocked by robots.txt, not checked')
+        elif result.get('rate_limited'):
+            log_not_checked(conn, result['url'], 'Rate limited (429), link not marked as broken')
         else:
             insert_or_update_link(conn, result, result['record_id'])
             
@@ -562,7 +586,7 @@ def main():
             if STOREINDB:
                 save_results_to_db(con, site_results)
             results.extend(site_results)
-        checked = [r for r in results if not r.get('rate_limited')]
+        checked = [r for r in results if not r.get('robots_blocked') and not r.get('rate_limited')]
         print(f"\nTime elapsed: {time.time() - start_time:.2f} seconds")
         print(f"Links checked: {len(checked)}, valid: {sum(r['valid'] for r in checked)}, invalid: {sum(not r['valid'] for r in checked)}")
     finally:
